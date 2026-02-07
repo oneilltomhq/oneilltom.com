@@ -269,6 +269,123 @@
             "type": "application"
         }
     ],
+    "skills": [
+        {
+            "name": "3D Web & GPU Graphics",
+            "level": "Advanced",
+            "keywords": [
+                "Three.js",
+                "React Three Fiber",
+                "WebGPU",
+                "WebGL",
+                "TSL",
+                "WGSL",
+                "Shaders",
+                "Raymarching",
+                "Volumetric Rendering",
+                "CSG"
+            ]
+        },
+        {
+            "name": "Frontend Engineering",
+            "level": "Advanced",
+            "keywords": [
+                "TypeScript",
+                "JavaScript",
+                "React",
+                "Next.js",
+                "SSR",
+                "Tailwind CSS"
+            ]
+        },
+        {
+            "name": "Geospatial & Data Visualization",
+            "level": "Advanced",
+            "keywords": [
+                "Mapbox GL",
+                "Turf.js",
+                "3D visualization",
+                "matplotlib"
+            ]
+        },
+        {
+            "name": "AI, NLP & Vector Search",
+            "level": "Intermediate",
+            "keywords": [
+                "Embeddings",
+                "Semantic Search",
+                "BERTopic",
+                "UMAP",
+                "HDBSCAN",
+                "Pinecone",
+                "pgvector",
+                "HNSW",
+                "Vercel AI SDK",
+                "Tool-calling"
+            ]
+        },
+        {
+            "name": "Backend & APIs",
+            "level": "Intermediate",
+            "keywords": [
+                "REST APIs",
+                "Supabase",
+                "PostgreSQL",
+                "Stripe",
+                "JSON Patch",
+                "Modal",
+                "Golang",
+                "Rust"
+            ]
+        },
+        {
+            "name": "Python & Data Engineering",
+            "level": "Intermediate",
+            "keywords": [
+                "Python",
+                "pandas",
+                "NumPy",
+                "SciPy",
+                "ETL",
+                "Black-Scholes"
+            ]
+        },
+        {
+            "name": "DevOps & Infrastructure",
+            "level": "Intermediate",
+            "keywords": [
+                "Docker",
+                "Kubernetes",
+                "Ansible",
+                "OpenStack",
+                "Linux",
+                "Shell Scripting"
+            ]
+        },
+        {
+            "name": "Decentralized Systems",
+            "level": "Intermediate",
+            "keywords": [
+                "Nostr",
+                "Fedimint",
+                "Bitcoin",
+                "Ecash",
+                "P2P protocols",
+                "LMDB",
+                "Functional Programming (fp-ts)"
+            ]
+        },
+        {
+            "name": "Facilitation & Relational Practice",
+            "level": "Intermediate",
+            "keywords": [
+                "Circling",
+                "Authentic Relating",
+                "Group facilitation",
+                "Community organizing"
+            ]
+        }
+    ],
     "languages": [
         {
             "language": "English",
