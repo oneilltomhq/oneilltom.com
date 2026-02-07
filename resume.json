@@ -1,4 +1,25 @@
 {
+    "basics": {
+        "name": "Thomas O'Neill",
+        "email": "tom@oneilltom.com",
+        "url": "https://oneilltom.com",
+        "location": {
+            "city": "London",
+            "countryCode": "GB"
+        },
+        "profiles": [
+            {
+                "network": "GitHub",
+                "username": "pipefold",
+                "url": "https://github.com/pipefold"
+            },
+            {
+                "network": "LinkedIn",
+                "username": "pipefoldtom",
+                "url": "https://www.linkedin.com/in/pipefoldtom/"
+            }
+        ]
+    },
     "work": [
         {
             "name": "Connection Lab",
@@ -246,6 +267,12 @@
                 "functional programming"
             ],
             "type": "application"
+        }
+    ],
+    "languages": [
+        {
+            "language": "English",
+            "fluency": "Native speaker"
         }
     ]
 }
