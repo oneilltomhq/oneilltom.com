@@ -1,4 +1,36 @@
 {
+    "work": [
+        {
+            "name": "Connection Lab",
+            "location": "London, UK",
+            "position": "Co-founder / Facilitator",
+            "url": "",
+            "startDate": "2025-05-22",
+            "endDate": "2025-07-03",
+            "summary": "Co-founded and facilitated a paid circling (relational practice) pilot event series in London, exploring authentic relating and presence through guided group practice.",
+            "highlights": [
+                "Produced 4 paid evenings at London Shambhala Meditation Centre over a ~6-week run",
+                "Managed end-to-end event production: venue sourcing, ticketing (Eventbrite then Ticket Tailor), pricing, and attendee communications",
+                "Co-facilitated sessions with 1 other leader, holding group agreements, safety, and session structure",
+                "Designed session format: guided warm-up practices into open circling exploration with debrief"
+            ]
+        }
+    ],
+    "volunteer": [
+        {
+            "organization": "Lisbon Circling Crew",
+            "position": "Co-facilitator / Organizer",
+            "url": "",
+            "startDate": "2024-09",
+            "endDate": "2024-12",
+            "summary": "Co-led a free community circling series in Lisbon, building a local relational practice community through regular open circles.",
+            "highlights": [
+                "Organized and facilitated recurring free circling events listed on Meetup",
+                "Co-led with 2 other facilitators; handled planning, venue coordination, and participant onboarding",
+                "Built early community momentum for circling practice in Lisbon"
+            ]
+        }
+    ],
     "projects": [
         {
             "name": "Semantic Atlas",
