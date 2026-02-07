@@ -116,6 +116,8 @@
                 "Python",
                 "embeddings"
             ],
+            "startDate": "2026-02-04",
+            "endDate": "",
             "type": "application"
         },
         {
@@ -141,7 +143,7 @@
                 "Tailwind CSS"
             ],
             "startDate": "2025-11-21",
-            "endDate": "",
+            "endDate": "2025-12-08",
             "url": "",
             "type": "application"
         },
@@ -165,6 +167,8 @@
                 "data engineering",
                 "quantitative finance"
             ],
+            "startDate": "2025-06-01",
+            "endDate": "2025-07-16",
             "type": "application"
         },
         {
@@ -194,6 +198,8 @@
                 "3D visualization",
                 "decentralized social"
             ],
+            "startDate": "2025-03-05",
+            "endDate": "2025-05-01",
             "type": "application"
         },
         {
@@ -218,6 +224,8 @@
                 "vector embeddings",
                 "semantic search"
             ],
+            "startDate": "2025-11-12",
+            "endDate": "2026-01-03",
             "type": "application"
         },
         {
@@ -242,6 +250,8 @@
                 "npm",
                 "library"
             ],
+            "startDate": "2025-09-13",
+            "endDate": "2025-10-24",
             "type": "library"
         },
         {
@@ -266,6 +276,8 @@
                 "Tailwind CSS",
                 "functional programming"
             ],
+            "startDate": "2024-06-20",
+            "endDate": "2024-06-21",
             "type": "application"
         }
     ],
