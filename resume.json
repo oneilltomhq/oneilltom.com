@@ -14,6 +14,51 @@
                 "Co-facilitated sessions with 1 other leader, holding group agreements, safety, and session structure",
                 "Designed session format: guided warm-up practices into open circling exploration with debrief"
             ]
+        },
+        {
+            "name": "Open Systems Lab",
+            "position": "Lead 3D Web Engineer",
+            "url": "https://opensystemslab.io/",
+            "startDate": "2021-11-01",
+            "endDate": "2025-03-01",
+            "highlights": [
+                "Led frontend engineering of BuildX, a 3D web app for modular housing design (WikiHouse integration); real-time parametric modeling, interactive 3D manipulations (oriented bounding box collision, three-bvh-csg), geospatial site selection (Mapbox GL, Turf.js), analytics for carbon/cost estimates, outputs (bill of materials, CSV/3D exports).",
+                "Directed frontend development of Atlas of Ownership, a Mapbox GL/Next.js platform for browsing land ownership on 3D globe; synchronized routing, SSR, navigation, and interactive visualizations."
+            ]
+        },
+        {
+            "name": "Bearjam",
+            "position": "Co-Founder & Lead Developer",
+            "url": "https://bearjam-dev.vercel.app/",
+            "startDate": "2020-01-01",
+            "endDate": "2021-11-01",
+            "highlights": [
+                "Developed Dream Builder, a 2D digital vision boarding app in 3D space using React Three Fiber; documented in blog series.",
+                "Built Bear Bookshop: E-commerce site with Stripe/iZettle integrations for payments and POS."
+            ]
+        },
+        {
+            "name": "Free the Data",
+            "position": "Prospective Founder",
+            "url": "https://sdinnovation.org/projects/#freethedata",
+            "startDate": "2017-06-01",
+            "endDate": "2017-12-01",
+            "highlights": [
+                "Developed business plan and open-source software concept for user-managed distributed data stores.",
+                "Prototyped React Native mobile app for location tracking; built skills in entrepreneurship and decentralized systems."
+            ]
+        },
+        {
+            "name": "Claranet",
+            "position": "Systems Engineer & Developer",
+            "url": "https://claranet.com",
+            "startDate": "2015-11-01",
+            "endDate": "2017-04-01",
+            "highlights": [
+                "Automated network/server configs using DevOps tools (Docker, Kubernetes, Ansible); programmed in Python, Golang, shell scripting.",
+                "Deployed OpenStack POC and contributed to OpenStack Kolla for Neutron BGP routing.",
+                "Built in-house tools: Java UI/REST API, Perl automation scripts."
+            ]
         }
     ],
     "volunteer": [
