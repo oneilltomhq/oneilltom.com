@@ -1,0 +1,174 @@
+{
+    "projects": [
+        {
+            "name": "Semantic Atlas",
+            "description": "Privacy-first 3D visualization of 5k+ AI conversations using WebGPU, clustered via BERTopic embeddings",
+            "highlights": [
+                "Built reproducible NLP pipeline: GDPR exports → embeddings → UMAP → HDBSCAN clustering",
+                "Interactive WebGPU/Three.js explorer with topic filtering and semantic navigation",
+                "Privacy-first: public demo uses sanitized data; private mode loads local exports"
+            ],
+            "keywords": [
+                "Three.js",
+                "WebGPU",
+                "NLP",
+                "BERTopic",
+                "UMAP",
+                "data visualization",
+                "Python",
+                "embeddings"
+            ],
+            "type": "application"
+        },
+        {
+            "name": "Voice2Hand",
+            "description": "Voice-driven poker hand history recorder and visualizer that converts spoken narration into structured OpenHandHistory format with real-time table visualization.",
+            "highlights": [
+                "Real-time speech-to-text using Deepgram for live poker hand narration",
+                "LLM-powered natural language parsing via Groq to interpret poker actions",
+                "Incremental state updates using RFC 6902 JSON Patches",
+                "Interactive poker table replayer with seat mapping, dealer button, and pot calculations",
+                "Built around OpenHandHistory specification for interoperable hand data"
+            ],
+            "keywords": [
+                "Next.js",
+                "TypeScript",
+                "Deepgram",
+                "Groq",
+                "Vercel AI SDK",
+                "Speech-to-Text",
+                "Poker",
+                "OpenHandHistory",
+                "JSON Patch",
+                "Tailwind CSS"
+            ],
+            "startDate": "2025-11-21",
+            "endDate": "",
+            "url": "",
+            "type": "application"
+        },
+        {
+            "name": "Trading Analytics",
+            "description": "Python pipeline that normalizes personal trade history across multiple brokers and asset classes, producing quarterly PnL reports with risk-adjusted performance metrics and options Greeks tracking.",
+            "highlights": [
+                "Multi-broker trade ingestion: normalizes CSV exports from equity, options, and crypto platforms into unified format",
+                "Quarterly performance reports with Sharpe ratio, Sortino ratio, profit factor, and win rate",
+                "Options Greeks tracker: Black-Scholes pricing with delta and theta decay visualization",
+                "BTC-denominated stock pricing for Bitcoin treasury companies across multiple fiat pairs"
+            ],
+            "keywords": [
+                "Python",
+                "pandas",
+                "NumPy",
+                "SciPy",
+                "yfinance",
+                "Black-Scholes",
+                "matplotlib",
+                "data engineering",
+                "quantitative finance"
+            ],
+            "type": "application"
+        },
+        {
+            "name": "Nostrosity",
+            "description": "Semantic search and spatial 3D visualization of decentralized Nostr content — ingest notes from relays, embed them into vector space for AI-powered retrieval, and explore the results in a navigable Minority Report-style 3D environment.",
+            "highlights": [
+                "Nostr relay ingestion pipeline with Negentropy sync, LMDB caching, and NIP-01/NIP-23 support",
+                "NLP preprocessing: language detection, text cleaning, emoji filtering for embedding-ready content",
+                "Vector embedding into Pinecone for semantic search over decentralized social content",
+                "Deeply specified 3D spatial explorer: notes arranged by time, topic, and content type on independent axes",
+                "Gesture-based navigation with spatial bookmarking, thread following, and connection visualization",
+                "NIP-23 long-form content client with key management and relay publishing (wotidid)"
+            ],
+            "keywords": [
+                "Nostr",
+                "Three.js",
+                "WebGL",
+                "Pinecone",
+                "vector embeddings",
+                "semantic search",
+                "NIP-01",
+                "NIP-23",
+                "Python",
+                "Rust",
+                "Next.js",
+                "NDK",
+                "3D visualization",
+                "decentralized social"
+            ],
+            "type": "application"
+        },
+        {
+            "name": "Jobby",
+            "description": "AI job search system with two composable halves: a conversational career coach that builds structured resume profiles, and a semantic matching engine that hunts jobs against them.",
+            "highlights": [
+                "Career coach agent: conversational AI that structures goals, strengths, and experience into a resume profile via tool-calling",
+                "Semantic matching engine: Nomic AI embeddings on Modal GPU, pgvector HNSW cosine similarity in Supabase",
+                "Multi-source job ingestion: Adzuna, JSearch, RemoteOK, Authentic Jobs, Hacker News APIs",
+                "Publishable AI SDK tool with 'vibe' filter for culture-aware search (startup, creative, corporate, remote)",
+                "Resume-to-job tailoring: agent rewrites resume sections for specific listings"
+            ],
+            "keywords": [
+                "Python",
+                "TypeScript",
+                "Next.js",
+                "Supabase",
+                "pgvector",
+                "Modal",
+                "Nomic AI",
+                "Vercel AI SDK",
+                "vector embeddings",
+                "semantic search"
+            ],
+            "type": "application"
+        },
+        {
+            "name": "lib3",
+            "description": "Published npm library of composable TSL shader nodes for Three.js WebGPU — simplex noise, wave displacement, adaptive raymarching, volumetric rendering, and geometry morphing as tree-shakeable building blocks.",
+            "highlights": [
+                "Published to npm as @pipefold/lib3 with tree-shakeable module exports (waves, knotMorph, index)",
+                "3D simplex noise, spherical wave displacement with noise-modulated amplitude, and compute shader kernels for 3D texture displacement",
+                "Adaptive distance-field raymarching within unit boxes and average intensity projection for volumetric rendering",
+                "14 interactive examples: raymarched medical data, volumetric dust, portal transitions, cinematic gallery, projector beams, FBM streaks"
+            ],
+            "keywords": [
+                "TypeScript",
+                "Three.js",
+                "WebGPU",
+                "TSL",
+                "WGSL",
+                "shaders",
+                "raymarching",
+                "volumetric rendering",
+                "simplex noise",
+                "npm",
+                "library"
+            ],
+            "type": "library"
+        },
+        {
+            "name": "Fedimint Observer",
+            "description": "Next.js dashboard for monitoring Fedimint ecash federations — lists active federations, displays guardian configurations and module versions, and geolocates guardian nodes via DNS resolution and IP lookup.",
+            "highlights": [
+                "Server-rendered federation dashboard querying a Fedimint observer backend API",
+                "Functional programming architecture using fp-ts: Task, TaskEither, pipe, and parallel sequencing with sequenceT",
+                "Typed domain models for Fedimint federations, guardians, modules, and consensus versions",
+                "Guardian node geolocation via DNS resolution and IPinfo API integration",
+                "Dynamic federation detail pages with guardian endpoints, module listings, and metadata display"
+            ],
+            "keywords": [
+                "Next.js",
+                "TypeScript",
+                "fp-ts",
+                "Fedimint",
+                "ecash",
+                "Bitcoin",
+                "geolocation",
+                "IPinfo",
+                "Tailwind CSS",
+                "functional programming"
+            ],
+            "type": "application"
+        }
+    ]
+}
