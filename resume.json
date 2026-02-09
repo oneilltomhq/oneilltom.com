@@ -99,6 +99,31 @@
     ],
     "projects": [
         {
+            "name": "agent-browser-ext",
+            "description": "Chrome extension for in-browser automation via the chrome.debugger API — built for LLM-based agents that run inside the browser and cannot use Playwright/agent-browser (which require spawning a child Chromium process). Automates the same browser instance the agent is already running in, inheriting existing cookies, auth state, and extensions.",
+            "highlights": [
+                "8 CDP automation primitives (navigate, snapshot, click, type, pressKey, screenshot, evaluate, waitForLoad) dispatched from a Manifest V3 background service worker",
+                "Ref system joining Accessibility tree with DOMSnapshot bounding boxes for precise element targeting — filters to actionable roles (button, link, textbox, etc.) via backendNodeId",
+                "Singleton CDP session manager handling attach/detach lifecycle and domain enabling per tab",
+                "Automated acceptance tests using Puppeteer to load the extension into a real Chrome instance and verify all commands end-to-end"
+            ],
+            "keywords": [
+                "TypeScript",
+                "Chrome Extension",
+                "Manifest V3",
+                "Chrome DevTools Protocol",
+                "chrome.debugger",
+                "Accessibility Tree",
+                "DOMSnapshot",
+                "esbuild",
+                "Puppeteer",
+                "Browser Automation"
+            ],
+            "startDate": "2026-02-08",
+            "endDate": "",
+            "type": "extension"
+        },
+        {
             "name": "Semantic Atlas",
             "description": "Privacy-first 3D visualization of 5k+ AI conversations using WebGPU, clustered via BERTopic embeddings",
             "highlights": [
