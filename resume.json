@@ -99,13 +99,39 @@
     ],
     "projects": [
         {
+            "name": "browser-native-agent",
+            "description": "Reference implementation of a browser-resident LLM agent that automates the same Chrome instance via agent-browser-ext (MV3 + chrome.debugger/CDP) — no Playwright, no spawned Chromium; inherits existing cookies, auth state, and extensions.",
+            "highlights": [
+                "Tool-calling agent runs in-browser and dispatches CDP primitives via typed message passing to MV3 background service worker",
+                "Same-instance automation: operates on already-authenticated tabs without re-login, profile syncing, or driver-managed Chromium",
+                "Grounding loop: snapshot → plan → tool-call → verify, using AX+DOMSnapshot element targeting to reduce selector brittleness",
+                "Minimal by design: deterministic tool schema, step logging, and clear boundaries between reasoning and actuation"
+            ],
+            "keywords": [
+                "TypeScript",
+                "LLM Agents",
+                "Tool-calling",
+                "Anthropic SDK",
+                "Chrome Extension",
+                "Manifest V3",
+                "chrome.debugger",
+                "Chrome DevTools Protocol",
+                "Browser Automation",
+                "Accessibility Tree"
+            ],
+            "startDate": "2026-02-09",
+            "endDate": "",
+            "type": "application"
+        },
+        {
             "name": "agent-browser-ext",
             "description": "Chrome extension for in-browser automation via the chrome.debugger API — built for LLM-based agents that run inside the browser and cannot use Playwright/agent-browser (which require spawning a child Chromium process). Automates the same browser instance the agent is already running in, inheriting existing cookies, auth state, and extensions.",
             "highlights": [
                 "8 CDP automation primitives (navigate, snapshot, click, type, pressKey, screenshot, evaluate, waitForLoad) dispatched from a Manifest V3 background service worker",
                 "Ref system joining Accessibility tree with DOMSnapshot bounding boxes for precise element targeting — filters to actionable roles (button, link, textbox, etc.) via backendNodeId",
                 "Singleton CDP session manager handling attach/detach lifecycle and domain enabling per tab",
-                "Automated acceptance tests using Puppeteer to load the extension into a real Chrome instance and verify all commands end-to-end"
+                "Automated acceptance tests using Puppeteer to load the extension into a real Chrome instance and verify all commands end-to-end",
+                "Designed as a tool surface for browser-resident LLM agents; consumed by a reference browser-native agent demo"
             ],
             "keywords": [
                 "TypeScript",
