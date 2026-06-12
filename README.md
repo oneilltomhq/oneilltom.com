@@ -1,10 +1,10 @@
 # oneilltom.com
 
-My personal site. One page; the background is the interesting part.
+My personal site. One page; everything moving on it is the interesting part.
 
-## The background
+## The visuals
 
-It's a live [Hydra](https://hydra.ojack.xyz/) video synth — but instead of
+A live [Hydra](https://hydra.ojack.xyz/) video synth — but instead of
 hydra-synth's hand-built GLSL strings, the Hydra core is **compiled to Three.js
 TSL**, so the same patch source emits **WGSL on WebGPU** with automatic
 GLSL/WebGL fallback:
@@ -23,6 +23,13 @@ definitions, a compiler (a port of hydra-synth's `generateGlsl()` recursion
 that emits TSL node closures instead of strings), ping-pong framebuffer
 feedback, and the synth class. The patch names in the page footer recompile
 the shader live in your tab.
+
+And because each compiled patch is a TSL node graph rather than a fullscreen
+shader string, an output isn't bound to a screen quad the way real Hydra is —
+it's just a `colorNode` you can hang on any material. The page demonstrates
+that: the background is one synth output (`scene.backgroundNode`), and the
+tumbling cube wears three more as ordinary mesh materials, all fed by the same
+ping-pong feedback passes each frame.
 
 ## Run locally
 

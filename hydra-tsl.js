@@ -245,9 +245,9 @@ class Output {
 // top-level synth
 // ---------------------------------------------------------------------------
 export class HydraTSL {
-	constructor( { canvas, width = 1280, height = 720, forceWebGL = false } = {} ) {
+	constructor( { canvas, width = 1280, height = 720, forceWebGL = false, antialias = false } = {} ) {
 		this.width = width; this.height = height;
-		this.renderer = new WebGPURenderer( { canvas, antialias: false, forceWebGL } );
+		this.renderer = new WebGPURenderer( { canvas, antialias, forceWebGL } );
 		this.renderer.setSize( width, height );
 
 		this.outputs = [];
@@ -285,7 +285,9 @@ export class HydraTSL {
 		return { vertexShader, fragmentShader };
 	}
 
-	tick( tSeconds ) {
+	// run all patch passes offscreen (uniform updates, ping-pong, swap) without
+	// presenting — for callers that composite the outputs into their own scene
+	update( tSeconds ) {
 		state.t = tSeconds;
 		for ( const out of this.outputs ) {
 			if ( ! out.hasChain ) continue;
@@ -298,8 +300,17 @@ export class HydraTSL {
 			const tmp = out.read; out.read = out.write; out.write = tmp; // swap
 			out.texNode.value = out.read.texture;                        // re-point feedback
 		}
+	}
+
+	// blit the display output to the canvas (Hydra's classic fullscreen view)
+	present() {
 		this.screenTex.value = this.display.read.texture;
 		this.renderer.setRenderTarget( null );
 		this.screenQuad.render( this.renderer );
+	}
+
+	tick( tSeconds ) {
+		this.update( tSeconds );
+		this.present();
 	}
 }

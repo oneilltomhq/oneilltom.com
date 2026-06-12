@@ -93,13 +93,14 @@
 	</main>
 
 	<div id="caption">
-		<span id="caption-live" hidden>This background is live — a <a href="https://hydra.ojack.xyz/">Hydra</a> video synth compiled to
+		<span id="caption-live" hidden>Everything moving is live — a <a href="https://hydra.ojack.xyz/">Hydra</a> video synth compiled to
 		<span id="lang">WGSL</span> via Three.js TSL, running on <span id="backend">WebGPU</span> in this tab right now.
-		<a href="https://github.com/oneilltomhq/oneilltom.com">view source ↗</a><br>
-		patch (click to recompile live):
-		<span class="patch" data-p="kaleid">kaleid</span> ·
-		<span class="patch" data-p="feedback">feedback</span> ·
-		<span class="patch" data-p="basic">basic</span></span>
+		Because each patch compiles to a node graph rather than a fullscreen shader, the outputs are just materials —
+		the cube wears three of them. <a href="https://github.com/oneilltomhq/oneilltom.com">view source ↗</a><br>
+		background patch (click to recompile live):
+		<span class="patch" data-p="ink">ink</span> ·
+		<span class="patch" data-p="silk">silk</span> ·
+		<span class="patch" data-p="melt">melt</span></span>
 	</div>
 
 	<script type="importmap">
@@ -115,41 +116,122 @@
 		// The page works without this script: visuals are progressive enhancement.
 		try {
 			const { HydraTSL } = await import('./hydra-tsl.js');
+			const { Scene, PerspectiveCamera, Mesh, BoxGeometry, MeshBasicNodeMaterial } =
+				await import('three/webgpu');
+			const { texture, screenUV } = await import('three/tsl');
 
 			const canvas = document.getElementById('view');
-			const synth = new HydraTSL({ canvas, width: 960, height: 540 });
-			// the renderer pins inline 960×540 styles on the canvas; we want it stretched
-			canvas.style.width = '100vw';
-			canvas.style.height = '100vh';
+			// patch buffers stay 960×540; the canvas itself renders at viewport size
+			const synth = new HydraTSL({ canvas, width: 960, height: 540, antialias: true });
 			await synth.init();
-			const { osc, noise, src, o0 } = synth.api;
+			const { osc, noise, src, o0, o1, o2, o3 } = synth.api;
 
-			const patches = {
-				kaleid: () =>
-					noise(3.5, 0.1)
-						.modulate(src(o0).scale(1.02).rotate(0.01), 0.025)
-						.kaleid(6)
-						.color(1.2, 0.8, 1.6)
-						.contrast(1.3)
+			// ---- background patches (o0) — muted, text-friendly ----------------
+			const backgrounds = {
+				ink: () =>
+					noise(1.7, 0.06)
+						.modulate(src(o0).scale(1.012).rotate(0.004), 0.22)
+						.color(0.33, 0.37, 0.47)
+						.contrast(1.25)
+						.brightness(-0.07)
 						.out(o0),
-				feedback: () =>
-					osc(10, 0.1, 1.0)
+				silk: () =>
+					osc(4, 0.04, 0.8)
+						.modulate(noise(2.2, 0.06), 0.35)
+						.modulate(src(o0).rotate(0.008), 0.12)
+						.color(0.45, 0.38, 0.62)
+						.saturate(0.65)
+						.contrast(1.25)
+						.brightness(-0.03)
+						.out(o0),
+				melt: () =>
+					osc(8, 0.05, 0.9)
 						.rotate(0.4)
-						.modulate(src(o0).scale(1.04), 0.02)
+						.modulate(src(o0).scale(1.025), 0.035)
+						.saturate(0.55)
+						.contrast(1.35)
+						.brightness(-0.2)
 						.out(o0),
-				basic: () => osc(20, 0.1, 0.8).rotate(0.5).out(o0),
+			};
+
+			// ---- cube face patches (o1..o3) — vivid against the muted bg -------
+			osc(6, 0.06, 0.4)
+				.modulate(noise(2.6, 0.08), 0.35)
+				.color(1.4, 0.6, 0.3)
+				.saturate(0.75)
+				.contrast(1.4)
+				.out(o1); // ember
+			noise(2.8, 0.05)
+				.kaleid(7)
+				.modulate(src(o2).scale(1.03).rotate(0.012), 0.07)
+				.color(0.35, 0.95, 1.25)
+				.contrast(1.5)
+				.out(o2); // mandala
+			osc(18, 0.04, 0)
+				.rotate(0.45)
+				.diff(osc(18, 0.04, 0).rotate(-0.45))
+				.color(0.9, 0.8, 1.4)
+				.contrast(1.4)
+				.out(o3); // moiré
+
+			// ---- composite scene: synth outputs as a background + materials ----
+			const scene = new Scene();
+			const bgTex = texture(o0.read.texture, screenUV);
+			scene.backgroundNode = bgTex;
+
+			const faceOutputs = [o1, o2, o3];
+			const faceTex = faceOutputs.map((o) => texture(o.read.texture));
+			const faceMats = faceTex.map((t) => {
+				const m = new MeshBasicNodeMaterial();
+				m.colorNode = t;
+				return m;
+			});
+			const cube = new Mesh(
+				new BoxGeometry(1.35, 1.35, 1.35),
+				[faceMats[0], faceMats[1], faceMats[2], faceMats[0], faceMats[1], faceMats[2]]);
+			scene.add(cube);
+
+			const camera = new PerspectiveCamera(38, 1, 0.1, 50);
+			camera.position.z = 6;
+
+			// keep the cube clear of the text: drift right-of-centre on wide
+			// screens, above the text block on narrow ones
+			const drift = { x: 1.3, y: 0 };
+			const resize = () => {
+				synth.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+				synth.renderer.setSize(innerWidth, innerHeight);
+				camera.aspect = innerWidth / innerHeight;
+				camera.updateProjectionMatrix();
+				const halfW = Math.tan((camera.fov / 2) * Math.PI / 180) * camera.position.z * camera.aspect;
+				drift.x = Math.min(Math.max(halfW - 1.6, 0), 1.4);
+				drift.y = drift.x < 0.5 ? 1.15 : 0;
+			};
+			resize();
+			addEventListener('resize', resize);
+
+			const frame = (t) => {
+				synth.update(t);
+				bgTex.value = o0.read.texture;
+				faceTex.forEach((tn, i) => { tn.value = faceOutputs[i].read.texture; });
+				cube.rotation.set(t * 0.17, t * 0.13, 0);
+				cube.position.set(
+					drift.x + Math.sin(t * 0.13) * 0.8,
+					drift.y + Math.sin(t * 0.094) * 0.6,
+					Math.sin(t * 0.07) * 0.4);
+				synth.renderer.setRenderTarget(null); // update() leaves an offscreen target bound
+				synth.renderer.render(scene, camera);
 			};
 
 			const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-			const setPatch = (name) => {
-				patches[name]();
+			const setBg = (name) => {
+				backgrounds[name]();
 				document.querySelectorAll('.patch').forEach(
 					(el) => el.classList.toggle('on', el.dataset.p === name));
-				if (reduced) for (let i = 0; i < 30; i++) synth.tick(i / 10);
+				if (reduced) { for (let i = 0; i < 45; i++) synth.update(i / 10); frame(4.6); }
 			};
-			setPatch(patches[location.hash.slice(1)] ? location.hash.slice(1) : 'kaleid');
+			setBg(backgrounds[location.hash.slice(1)] ? location.hash.slice(1) : 'ink');
 			document.querySelectorAll('.patch').forEach((el) =>
-				el.addEventListener('click', () => setPatch(el.dataset.p)));
+				el.addEventListener('click', () => setBg(el.dataset.p)));
 
 			const isWebGPU = synth.backend === 'WebGPU';
 			document.getElementById('backend').textContent = synth.backend;
@@ -158,10 +240,10 @@
 
 			const t0 = performance.now();
 			function loop() {
-				synth.tick((performance.now() - t0) / 1000);
+				frame((performance.now() - t0) / 1000);
 				if (!reduced) requestAnimationFrame(loop);
 			}
-			loop();
+			if (!reduced) loop();
 			window.__ready = true;
 		} catch (e) {
 			// no WebGPU and no WebGL — leave the plain dark page
