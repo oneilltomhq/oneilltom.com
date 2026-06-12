@@ -95,18 +95,17 @@
 	<div id="caption">
 		<span id="caption-live" hidden>Everything moving is live — a <a href="https://hydra.ojack.xyz/">Hydra</a> video synth compiled to
 		<span id="lang">WGSL</span> via Three.js TSL, running on <span id="backend">WebGPU</span> in this tab right now.
-		Because each patch compiles to a node graph rather than a fullscreen shader, the outputs are just materials —
-		a swarm of 128 bodies wears them, mixed per face in the shader. The boxes are live mirrors: every face
-		re-projects the previous frame of the whole scene, recursion until the pixels run out. The globules
-		are a raymarched smooth-min SDF — no geometry, just the fragment shader — wearing the scene as a
-		warped mirror. Three invisible spinning gravity wells trade everything between them; click anywhere
-		to scatter. The physics is hand-rolled, no engine.
+		Because each patch compiles to a node graph rather than a fullscreen shader, the outputs are just
+		materials. The liquid is a raymarched smooth-min SDF — no geometry, just the fragment shader —
+		wearing the previous frame of the scene as a warped mirror. Three invisible spinning gravity wells
+		with different temperaments trade the globules between them; click anywhere to splash. The physics
+		is hand-rolled, no engine. (<a href="?swarm=1">?swarm=1</a> adds a 128-body instanced swarm.)
 		<a href="https://github.com/oneilltomhq/oneilltom.com">view source ↗</a><br>
 		background patch (click to recompile live):
 		<span class="patch" data-p="ink">ink</span> ·
 		<span class="patch" data-p="silk">silk</span> ·
 		<span class="patch" data-p="melt">melt</span>
-		<span style="float:right">build 2026-06-12.12-swarm</span></span>
+		<span style="float:right">build 2026-06-12.13-swarm</span></span>
 	</div>
 
 	<script type="importmap">
@@ -276,7 +275,10 @@
 				return m;
 			};
 
-			const KINDS = [
+			// ?swarm=1 brings back the instanced-primitive swarm alongside the
+			// globules; default is the minimal globules-only composition
+			const SWARM = new URLSearchParams(location.search).get('swarm') === '1';
+			const KINDS = !SWARM ? [] : [
 				{ geo: new BoxGeometry(0.3, 0.3, 0.3), count: 56, r: 0.26, mirror: true },
 				{ geo: new TetrahedronGeometry(0.26), count: 36, r: 0.2 },
 				{ geo: new OctahedronGeometry(0.24), count: 36, r: 0.2 },
@@ -321,10 +323,12 @@
 			// nothing — they are the SDF sources. Small separation radius lets
 			// them huddle so globules merge, stretch and split as the wells
 			// trade them.
-			const NBLOB = 12;
+			const NBLOB = SWARM ? 12 : 22;
 			for (let i = 0; i < NBLOB; i++) {
+				// skewed size distribution: a crowd of droplets, a few heavies
+				const rr = 0.1 + Math.pow(Math.random(), 1.7) * 0.48;
 				bodies.push({
-					mesh: null, idx: 0, s: 1, r: 0.14, rr: 0.26 + Math.random() * 0.16,
+					mesh: null, idx: 0, s: 1, r: Math.max(0.08, rr * 0.55), rr,
 					p: new Vector3((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 2.5,
 						(Math.random() - 0.5) * 2),
 					v: new Vector3(Math.random() - 0.5, Math.random() - 0.5,
@@ -463,10 +467,16 @@
 			                                          // (test budget = 3.4, keep in sync)
 			const Z_RANGE = 1.5;
 			const K_WALL_IN = 22, K_WALL_OUT = 34;    // soft frustum walls, backstop only
+			// each well has a temperament: gm/sm scale its gravity/spin, sp its
+			// roaming tempo, and a slow per-well mood swing (computed in step)
+			// juxtaposes calm against violent over ~1.5min cycles
 			const wells = [
-				{ p: new Vector3(), axis: new Vector3(), ph: 0.0, ax: 1.45, ay: 0.5 },
-				{ p: new Vector3(), axis: new Vector3(), ph: 2.1, ax: 1.1, ay: 0.75 },
-				{ p: new Vector3(), axis: new Vector3(), ph: 4.2, ax: 1.3, ay: 0.6 },
+				{ p: new Vector3(), axis: new Vector3(), ph: 0.0, ax: 1.45, ay: 0.5,
+					gm: 1.5, sm: 0.7, sp: 0.65, mood: 1 },  // the heavy: deep, slow
+				{ p: new Vector3(), axis: new Vector3(), ph: 2.1, ax: 1.0, ay: 0.8,
+					gm: 0.7, sm: 2.1, sp: 1.6, mood: 1 },   // the spinner: violent, fast
+				{ p: new Vector3(), axis: new Vector3(), ph: 4.2, ax: 1.3, ay: 0.6,
+					gm: 1.0, sm: 1.2, sp: 1.0, mood: 1 },   // the drifter: in between
 			];
 			const dq = new Quaternion(), tmp = new Vector3(), tmp2 = new Vector3();
 
@@ -484,15 +494,17 @@
 				for (let i = 0; i < 3; i++) {
 					const w = wells[i];
 					w.p.set(
-						0.7 + w.ax * Math.sin(0.26 * t + w.ph + i * 0.31),
-						w.ay * Math.sin(0.21 * t + w.ph * 1.7 + 1.1),
-						0.5 * Math.sin(0.15 * t + w.ph * 2.3));
+						0.7 + w.ax * Math.sin(0.26 * w.sp * t + w.ph + i * 0.31),
+						w.ay * Math.sin(0.21 * w.sp * t + w.ph * 1.7 + 1.1),
+						0.5 * Math.sin(0.15 * w.sp * t + w.ph * 2.3));
 					// spin axes: mostly screen-facing (visible orbital motion),
 					// each precessing differently so the orbit planes disagree
 					w.axis.set(
 						0.45 * Math.sin(0.06 * t + w.ph),
 						0.45 * Math.cos(0.08 * t + w.ph * 1.3),
 						i === 1 ? -1 : 1).normalize(); // middle well counter-rotates
+					// mood: swing between ~0.45x (dormant) and ~1.55x (raging)
+					w.mood = 1 + 0.55 * Math.sin(0.07 * w.sp * t + w.ph * 2.7);
 				}
 				// pairwise soft separation — O(n²)/2 ≈ 8k pairs, cheap at this n.
 				// Strength (R²/d² − 1): zero at the support edge, ramps smoothly
@@ -516,13 +528,13 @@
 						// the spin cross-product wants the full vector, as in
 						// the three.js example)
 						const d2 = tmp.lengthSq() + SOFT2;
-						const g = GRAV * b.pull / d2;
+						const g = GRAV * w.gm * w.mood * b.pull / d2;
 						// gravity: g along the unit direction
 						b.v.addScaledVector(tmp, g / Math.sqrt(d2) * dt);
 						// spin: (axis · g · SPIN) × toAttractor — tangential,
 						// magnitude ∝ g·d, peaks just outside the softening core
 						tmp2.crossVectors(w.axis, tmp);
-						b.v.addScaledVector(tmp2, g * SPIN * dt);
+						b.v.addScaledVector(tmp2, g * SPIN * w.sm * dt);
 					}
 					// slow desynced wander so the cloud never goes crystalline
 					b.v.x += Math.sin(b.wf * t + b.ph[0]) * WANDER * dt;
@@ -565,7 +577,7 @@
 				pointer.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
 				raycaster.setFromCamera(pointer, camera);
 				const ro = raycaster.ray.origin, rd = raycaster.ray.direction;
-				const BURST_R = 1.7, BURST = 2.4;
+				const BURST_R = 1.8, BURST = 3.0;
 				for (const b of bodies) {
 					tmp.subVectors(b.p, ro);
 					tmp2.copy(ro).addScaledVector(rd, tmp.dot(rd)); // closest point on ray
