@@ -58,3 +58,18 @@ python3 -m http.server 8000
 No build step. `vendor/` contains the three.js (r185+) WebGPU builds (MIT,
 © Three.js Authors). Hydra is by [Olivia Jack](https://github.com/hydra-synth/hydra) (AGPL-3.0);
 hydra-tsl is an independent reimplementation of the transform/compiler idea.
+
+## Testing
+
+`test/frame-continuity.mjs` (needs `playwright` + a served copy of the site)
+asserts the cube's position is continuous across every consecutive frame —
+no per-frame teleports. This invariant exists because a wall-clamp that
+"corrected" the cube's depth by a rotation-dependent amount every frame
+shipped as a maddening GlitchPass-style double-image: each frame was
+individually correct (clean screenshots), only the *sequence* was wrong
+(visible to the eye and to a phone camera, which both integrate frames).
+Physics positions may only change via velocities and forces.
+
+```sh
+node test/frame-continuity.mjs http://localhost:8000/
+```
