@@ -22,7 +22,7 @@ const r = await page.evaluate(`new Promise(res => {
       for (let i = 1; i < ps.length; i++) {
         const dt = ss[i] - ss[i-1];
         const d = Math.hypot(ps[i][0]-ps[i-1][0], ps[i][1]-ps[i-1][1], ps[i][2]-ps[i-1][2]);
-        maxRatio = Math.max(maxRatio, d / (2.2 * dt + 1e-6));
+        maxRatio = Math.max(maxRatio, d / (3.4 * dt + 1e-6)); // budget = SPEED_CAP + slack, keep in sync
         const dz = ps[i][2] - ps[i-1][2];
         if (Math.abs(dz) > 1e-4 && Math.abs(prevDz) > 1e-4 && Math.sign(dz) !== Math.sign(prevDz)) zFlips++;
         prevDz = dz;

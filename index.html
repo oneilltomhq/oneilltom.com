@@ -105,7 +105,7 @@
 		<span class="patch" data-p="ink">ink</span> ·
 		<span class="patch" data-p="silk">silk</span> ·
 		<span class="patch" data-p="melt">melt</span>
-		<span style="float:right">build 2026-06-12.8-swarm</span></span>
+		<span style="float:right">build 2026-06-12.9-swarm</span></span>
 	</div>
 
 	<script type="importmap">
@@ -331,16 +331,17 @@
 			// mod() box-wrap boundary — a position teleport, the exact bug
 			// class behind 'the glitch'. Soft frustum walls instead. Positions
 			// change ONLY via velocities (see test/frame-continuity.mjs).
-			const GRAV = 1.6;                         // G·M, per-body mass in b.pull
-			const SOFT2 = 0.35 * 0.35;                // softening radius² (d² += this)
-			const SPIN = 1.9;                         // spin force vs gravity strength
+			const GRAV = 2.6;                         // G·M, per-body mass in b.pull
+			const SOFT2 = 0.3 * 0.3;                  // softening radius² (d² += this)
+			const SPIN = 2.4;                         // spin force vs gravity strength
 			const SEP_K = 0.7, SEP_F_MAX = 2.5;       // soft mutual repulsion
 			const WANDER = 0.1;
 			const DRAG = 1.1;                         // per-second exponential — heavy,
 			                                          // the spin term feeds energy back
-			const SPEED_MAX = 1.7, SPEED_CAP = 2.1;   // soft governor, hard ceiling
+			const SPEED_MAX = 2.6, SPEED_CAP = 3.2;   // soft governor, hard ceiling
+			                                          // (test budget = 3.4, keep in sync)
 			const Z_RANGE = 1.5;
-			const K_WALL_IN = 14, K_WALL_OUT = 22;    // soft frustum walls, backstop only
+			const K_WALL_IN = 22, K_WALL_OUT = 34;    // soft frustum walls, backstop only
 			const wells = [
 				{ p: new Vector3(), axis: new Vector3(), ph: 0.0, ax: 1.45, ay: 0.5 },
 				{ p: new Vector3(), axis: new Vector3(), ph: 2.1, ax: 1.1, ay: 0.75 },
@@ -362,9 +363,9 @@
 				for (let i = 0; i < 3; i++) {
 					const w = wells[i];
 					w.p.set(
-						0.7 + w.ax * Math.sin(0.17 * t + w.ph + i * 0.31),
-						w.ay * Math.sin(0.13 * t + w.ph * 1.7 + 1.1),
-						0.5 * Math.sin(0.10 * t + w.ph * 2.3));
+						0.7 + w.ax * Math.sin(0.26 * t + w.ph + i * 0.31),
+						w.ay * Math.sin(0.21 * t + w.ph * 1.7 + 1.1),
+						0.5 * Math.sin(0.15 * t + w.ph * 2.3));
 					// spin axes: mostly screen-facing (visible orbital motion),
 					// each precessing differently so the orbit planes disagree
 					w.axis.set(
@@ -442,7 +443,7 @@
 				pointer.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
 				raycaster.setFromCamera(pointer, camera);
 				const ro = raycaster.ray.origin, rd = raycaster.ray.direction;
-				const BURST_R = 1.5, BURST = 1.6;
+				const BURST_R = 1.7, BURST = 2.4;
 				for (const b of bodies) {
 					tmp.subVectors(b.p, ro);
 					tmp2.copy(ro).addScaledVector(rd, tmp.dot(rd)); // closest point on ray
