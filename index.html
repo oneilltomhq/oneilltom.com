@@ -118,7 +118,8 @@
 		try {
 			const { HydraTSL } = await import('./hydra-tsl.js');
 			const { Scene, PerspectiveCamera, Mesh, BoxGeometry, MeshBasicNodeMaterial,
-				Group, Vector2, Vector3, Quaternion, Matrix3, Matrix4, Raycaster } =
+				Group, Vector2, Vector3, Quaternion, Matrix3, Matrix4, Raycaster,
+				RenderTarget, QuadMesh, HalfFloatType, LinearFilter, ClampToEdgeWrapping } =
 				await import('three/webgpu');
 			const { texture, screenUV } = await import('three/tsl');
 
@@ -177,16 +178,38 @@
 				.out(o3); // strata — low-frequency on purpose: fine patterns shimmer
 				          // (temporal aliasing) on a rotating, mipmap-less face
 
+			// ---- stable display copies of each output ---------------------------
+			// The scene must NEVER sample the ping-pong buffers directly: their
+			// textures swap roles every frame, and binding them in the scene pass
+			// cross-contaminates the feedback loops (scene content leaks into the
+			// buffers and the patches recycle it into ghost trails). Instead each
+			// output is blitted to a dedicated, never-swapped target; the scene
+			// samples only those.
+			const mkDisplay = (out) => {
+				const rt = new RenderTarget(960, 540, {
+					type: HalfFloatType, minFilter: LinearFilter, magFilter: LinearFilter,
+					wrapS: ClampToEdgeWrapping, wrapT: ClampToEdgeWrapping, depthBuffer: false,
+				});
+				const mat = new MeshBasicNodeMaterial();
+				mat.colorNode = out.texNode; // always points at out.read post-swap
+				return { rt, quad: new QuadMesh(mat) };
+			};
+			const displays = [o0, o1, o2, o3].map(mkDisplay);
+			const blitDisplays = () => {
+				for (const d of displays) {
+					synth.renderer.setRenderTarget(d.rt);
+					d.quad.render(synth.renderer);
+				}
+			};
+
 			// ---- composite scene: synth outputs as a background + materials ----
 			const scene = new Scene();
-			const bgTex = texture(o0.read.texture, screenUV);
+			const bgTex = texture(displays[0].rt.texture, screenUV);
 			scene.backgroundNode = bgTex;
 
-			const faceOutputs = [o1, o2, o3];
-			const faceTex = faceOutputs.map((o) => texture(o.read.texture));
-			const faceMats = faceTex.map((t) => {
+			const faceMats = [1, 2, 3].map((i) => {
 				const m = new MeshBasicNodeMaterial();
-				m.colorNode = t;
+				m.colorNode = texture(displays[i].rt.texture);
 				return m;
 			});
 			const cube = new Mesh(
@@ -306,9 +329,8 @@
 				last = t;
 				if (dt > 0) step(dt);
 				synth.update(t);
-				bgTex.value = o0.read.texture;
-				faceTex.forEach((tn, i) => { tn.value = faceOutputs[i].read.texture; });
-				synth.renderer.setRenderTarget(null); // update() leaves an offscreen target bound
+				blitDisplays();
+				synth.renderer.setRenderTarget(null); // blits leave an offscreen target bound
 				synth.renderer.render(scene, camera);
 			};
 			window.__body = body; window.__squash = squash; // test hooks
