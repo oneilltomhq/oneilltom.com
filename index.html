@@ -96,14 +96,15 @@
 		<span id="caption-live" hidden>Everything moving is live — a <a href="https://hydra.ojack.xyz/">Hydra</a> video synth compiled to
 		<span id="lang">WGSL</span> via Three.js TSL, running on <span id="backend">WebGPU</span> in this tab right now.
 		Because each patch compiles to a node graph rather than a fullscreen shader, the outputs are just materials —
-		here a swarm of 128 bodies wears three of them, mixed per face in the shader. An invisible roaming
-		attractor herds the swarm; click anywhere to scatter it. The physics is hand-rolled, no engine.
+		a swarm of 128 bodies wears them, mixed per face in the shader. The boxes are live mirrors: every face
+		re-projects the previous frame of the whole scene, recursion until the pixels run out. An invisible
+		breathing vortex herds the swarm; click anywhere to scatter it. The physics is hand-rolled, no engine.
 		<a href="https://github.com/oneilltomhq/oneilltom.com">view source ↗</a><br>
 		background patch (click to recompile live):
 		<span class="patch" data-p="ink">ink</span> ·
 		<span class="patch" data-p="silk">silk</span> ·
 		<span class="patch" data-p="melt">melt</span>
-		<span style="float:right">build 2026-06-12.6-swarm</span></span>
+		<span style="float:right">build 2026-06-12.7-swarm</span></span>
 	</div>
 
 	<script type="importmap">
@@ -230,36 +231,54 @@
 			const scene = new Scene();
 			scene.backgroundNode = texture(displays[0].rt.texture, screenUV);
 
-			// a swarm of primitives, every face wearing one of the three synth
-			// outputs. The patch choice is computed in the shader from
-			// instanceIndex + the face's dominant local axis, so three live
-			// patches fan out into hundreds of distinct faces; a per-instance
-			// hash() tint breaks uniformity. One material per geometry — the
-			// whole swarm is three draw calls.
+			// ---- the scene's own ping-pong: previous frame as a material -------
+			// Every frame the whole scene is rendered into one of these two
+			// targets and presented from it; next frame the boxes' faces sample
+			// it. Each box face is a tiny screen showing the swarm, whose boxes
+			// show the swarm — live video feedback, recursion until the pixels
+			// run out. Same read/write discipline as the synth buffers: sample
+			// only the half not being rendered into.
+			const mkSceneRT = () => new RenderTarget(1, 1, {
+				type: HalfFloatType, minFilter: LinearFilter, magFilter: LinearFilter,
+				wrapS: ClampToEdgeWrapping, wrapT: ClampToEdgeWrapping, depthBuffer: true,
+			});
+			const ping = { read: mkSceneRT(), write: mkSceneRT() };
+			const mirrorTex = texture(ping.read.texture, uv()); // .value re-pointed post-swap
+			const presentMat = new MeshBasicNodeMaterial();
+			const presentTex = texture(ping.read.texture, screenUV);
+			presentMat.colorNode = presentTex;
+			const presentQuad = new QuadMesh(presentMat);
+
+			// tetra/octa faces wear the synth outputs — patch choice computed in
+			// the shader from instanceIndex + dominant local axis, hash() tint.
+			// The boxes are the mirrors: previous frame on every face, faintly
+			// modulated by a patch so each recursion level drifts more synthward.
 			const faceTex = [1, 2, 3].map((i) => texture(displays[i].rt.texture, uv()));
-			const mkSwarmMaterial = (offset) => {
+			const mkSwarmMaterial = (offset, mirror) => {
 				const m = new MeshBasicNodeMaterial();
 				const an = normalLocal.abs();
 				const faceId = select(an.x.greaterThan(an.y).and(an.x.greaterThan(an.z)), uint(0),
 					select(an.y.greaterThan(an.z), uint(1), uint(2)));
 				const layer = instanceIndex.add(faceId).add(uint(offset)).mod(uint(3));
 				const tint = hash(instanceIndex.add(uint(offset * 131 + 7))).mul(0.55).add(0.7);
-				// sample all three unconditionally (texture fetches inside
-				// non-uniform branches degrade derivatives on WGSL); the select
-				// chain only picks between the already-sampled values
-				m.colorNode = select(layer.equal(uint(0)), faceTex[0],
-					select(layer.equal(uint(1)), faceTex[1], faceTex[2])).mul(tint);
+				// sample all unconditionally (texture fetches inside non-uniform
+				// branches degrade derivatives on WGSL); select on the values
+				const patch = select(layer.equal(uint(0)), faceTex[0],
+					select(layer.equal(uint(1)), faceTex[1], faceTex[2]));
+				m.colorNode = mirror
+					? mirrorTex.mul(patch.mul(0.7).add(0.75)).mul(1.25).mul(tint)
+					: patch.mul(tint);
 				return m;
 			};
 
 			const KINDS = [
-				{ geo: new BoxGeometry(0.3, 0.3, 0.3), count: 48, r: 0.26 },
-				{ geo: new TetrahedronGeometry(0.26), count: 40, r: 0.2 },
-				{ geo: new OctahedronGeometry(0.24), count: 40, r: 0.2 },
+				{ geo: new BoxGeometry(0.3, 0.3, 0.3), count: 56, r: 0.26, mirror: true },
+				{ geo: new TetrahedronGeometry(0.26), count: 36, r: 0.2 },
+				{ geo: new OctahedronGeometry(0.24), count: 36, r: 0.2 },
 			];
 			const bodies = [];
 			const meshes = KINDS.map((k, ki) => {
-				const mesh = new InstancedMesh(k.geo, mkSwarmMaterial(ki), k.count);
+				const mesh = new InstancedMesh(k.geo, mkSwarmMaterial(ki, k.mirror), k.count);
 				mesh.instanceMatrix.setUsage(DynamicDrawUsage);
 				mesh.frustumCulled = false; // always fully in frame anyway
 				scene.add(mesh);
@@ -286,28 +305,37 @@
 			camera.position.z = 6;
 
 			const resize = () => {
-				synth.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+				const pr = Math.min(devicePixelRatio, 1.75);
+				synth.renderer.setPixelRatio(pr);
 				synth.renderer.setSize(innerWidth, innerHeight);
+				// scene feedback targets track the drawing buffer so the
+				// mirror recursion stays crisp and aspect-true
+				ping.read.setSize(Math.round(innerWidth * pr), Math.round(innerHeight * pr));
+				ping.write.setSize(Math.round(innerWidth * pr), Math.round(innerHeight * pr));
 				camera.aspect = innerWidth / innerHeight;
 				camera.updateProjectionMatrix();
 			};
 			resize();
 			addEventListener('resize', resize);
 
-			// ---- physics: an invisible bobbing attractor herds the swarm -------
+			// ---- physics: an invisible breathing vortex herds the swarm --------
 			// Force recipe (after the three-blocks boids sim): constant-magnitude
 			// pull toward the attractor (distance-independent, so no 1/r² orbit
-			// blow-ups), finite-support soft separation between neighbours, slow
-			// desynced sine wander, mild drag, and a speed governor. Positions
-			// change ONLY via velocities (see test/frame-continuity.mjs).
-			const ATTRACT = 0.5;
+			// blow-ups) whose strength BREATHES on a slow cycle — the swarm
+			// inhales tight, exhales loose. A tangential swirl around a slowly
+			// precessing screen-facing axis turns the cloud into a vortex.
+			// Finite-support soft separation, desynced sine wander, drag, speed
+			// governor. Positions change ONLY via velocities
+			// (see test/frame-continuity.mjs).
+			const ATTRACT = 0.9;
+			const SWIRL = 0.55;                       // tangential vortex acceleration
 			const SEP_K = 0.7, SEP_F_MAX = 2.5;       // soft mutual repulsion
-			const WANDER = 0.12;
-			const DRAG = 0.12;                        // per-second exponential
-			const SPEED_MAX = 1.05, SPEED_CAP = 2.1;  // soft governor, hard ceiling
+			const WANDER = 0.2;
+			const DRAG = 0.18;                        // per-second exponential
+			const SPEED_MAX = 1.6, SPEED_CAP = 2.1;   // soft governor, hard ceiling
 			const Z_RANGE = 1.5;
 			const K_WALL_IN = 14, K_WALL_OUT = 22;    // soft frustum walls, backstop only
-			const attractor = new Vector3();
+			const attractor = new Vector3(), swirlAxis = new Vector3();
 			const dq = new Quaternion(), tmp = new Vector3(), tmp2 = new Vector3();
 
 			const softWall = (b, axis, limit, dt) => {
@@ -325,6 +353,11 @@
 					0.8 + 0.9 * Math.sin(0.20 * t + 0.5),
 					0.55 * Math.sin(0.16 * t + 1.7),
 					0.45 * Math.sin(0.12 * t + 3.1));
+				// inhale/exhale: pull strength swings 0.35×..1.65× over ~57s
+				const breathe = 1 + 0.65 * Math.sin(0.11 * t + 2.4);
+				// vortex axis: mostly screen-facing (visible orbital motion),
+				// precessing so the orbit plane slowly tips around
+				swirlAxis.set(0.35 * Math.sin(0.07 * t), 0.35 * Math.cos(0.09 * t + 1.1), 1).normalize();
 				// pairwise soft separation — O(n²)/2 ≈ 8k pairs, cheap at this n.
 				// Strength (R²/d² − 1): zero at the support edge, ramps smoothly
 				// as bodies approach, so nothing ever switches on with a pop.
@@ -344,7 +377,16 @@
 				for (const b of bodies) {
 					tmp.subVectors(attractor, b.p);
 					const dist = tmp.length();
-					if (dist > 1e-4) b.v.addScaledVector(tmp.divideScalar(dist), ATTRACT * b.pull * dt);
+					if (dist > 1e-4) {
+						tmp.divideScalar(dist);
+						b.v.addScaledVector(tmp, ATTRACT * breathe * b.pull * dt);
+						// tangential kick: swirlAxis × r̂ — strongest in the
+						// mid-band, fading at the core and far out
+						tmp2.crossVectors(swirlAxis, tmp).negate();
+						const band = Math.min(dist / 0.7, 1) *
+							Math.max(0, Math.min(1, 1 - (dist - 2.2) / 0.9));
+						b.v.addScaledVector(tmp2, SWIRL * band * b.pull * dt);
+					}
 					// slow desynced wander so the cloud never goes crystalline
 					b.v.x += Math.sin(b.wf * t + b.ph[0]) * WANDER * dt;
 					b.v.y += Math.sin(b.wf * 1.13 * t + b.ph[1]) * WANDER * dt;
@@ -401,18 +443,27 @@
 			});
 
 			let last = 0;
+			const sim = { t: 0 }; // accumulated *stepped* time — test hook
 			const SUBSTEP = 1 / 60; // fixed-ish step: stable forces, bounded n² cost
 			const frame = (t) => {
 				let dt = Math.min(t - last, 1 / 20); // clamp: tab refocus, hitches
 				last = t;
+				sim.t += dt;
 				while (dt > 0) { const h = Math.min(dt, SUBSTEP); step(h, t - dt + h); dt -= h; }
 				syncInstances();
 				synth.update(t);
 				blitDisplays();
-				synth.renderer.setRenderTarget(null); // blits leave an offscreen target bound
+				// scene → write (mirror faces sample read), present write, swap
+				mirrorTex.value = ping.read.texture;
+				synth.renderer.setRenderTarget(ping.write);
 				synth.renderer.render(scene, camera);
+				presentTex.value = ping.write.texture;
+				synth.renderer.setRenderTarget(null);
+				presentQuad.render(synth.renderer);
+				const r = ping.read; ping.read = ping.write; ping.write = r;
 			};
-			window.__body = bodies[0]; window.__bodies = bodies; window.__attractor = attractor; // test hooks
+			window.__body = bodies[0]; window.__bodies = bodies;
+			window.__attractor = attractor; window.__sim = sim; // test hooks
 
 			const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 			const setBg = (name) => {
