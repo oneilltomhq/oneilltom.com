@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Thomas O'Neill — full-stack &amp; creative web engineer</title>
+	<meta name="description" content="Thomas O'Neill — full-stack engineer (TypeScript, React, Node) specialising in 3D and interactive web: Three.js, React Three Fiber, WebGPU. Available for contract work, London / remote.">
+	<meta property="og:title" content="Thomas O'Neill — full-stack &amp; creative web engineer">
+	<meta property="og:description" content="The background of this page is a Hydra video synth compiled to WGSL via Three.js TSL, running live on WebGPU.">
+	<meta property="og:url" content="https://oneilltom.com">
+	<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>〜</text></svg>">
+	<style>
+		:root {
+			--fg: #f2f2f0;
+			--dim: #b8b8b4;
+			--faint: #8a8a86;
+			--accent: #ffd9fb;
+		}
+		* { box-sizing: border-box; }
+		html, body {
+			margin: 0; min-height: 100%;
+			background: #0a0a0c;
+			font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+			color: var(--fg);
+		}
+		#view {
+			position: fixed; inset: 0;
+			width: 100vw; height: 100vh;
+			z-index: 0;
+		}
+		#scrim {
+			position: fixed; inset: 0; z-index: 1; pointer-events: none;
+			background:
+				linear-gradient(105deg, rgba(8,8,10,0.82) 0%, rgba(8,8,10,0.55) 45%, rgba(8,8,10,0.25) 100%),
+				radial-gradient(ellipse at center, transparent 40%, rgba(8,8,10,0.5) 100%);
+		}
+		main {
+			position: relative; z-index: 2;
+			min-height: 100vh;
+			display: flex; flex-direction: column; justify-content: center;
+			padding: 6rem clamp(1.25rem, 6vw, 6rem) 9rem;
+			max-width: 60rem;
+		}
+		h1 {
+			margin: 0 0 1.4rem;
+			font-size: clamp(1.9rem, 5vw, 3.2rem);
+			font-weight: 600; letter-spacing: -0.02em;
+			text-shadow: 0 1px 12px rgba(0,0,0,0.6);
+		}
+		.line {
+			margin: 0.3rem 0; font-size: clamp(0.85rem, 2vw, 1.05rem);
+			color: var(--dim); line-height: 1.6;
+			text-shadow: 0 1px 8px rgba(0,0,0,0.7);
+		}
+		.line strong { color: var(--fg); font-weight: 600; }
+		.avail { margin-top: 1.1rem; color: var(--fg); }
+		.avail::before { content: '● '; color: #7dff9b; }
+		nav { margin-top: 2.2rem; display: flex; flex-wrap: wrap; gap: 0.6rem 1.6rem; }
+		nav a {
+			color: var(--fg); text-decoration: none;
+			border-bottom: 1px solid var(--faint);
+			padding-bottom: 2px; font-size: clamp(0.85rem, 2vw, 1rem);
+		}
+		nav a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+		#caption {
+			position: fixed; left: 0; right: 0; bottom: 0; z-index: 2;
+			padding: 0.9rem clamp(1.25rem, 6vw, 6rem) 1.1rem;
+			font-size: 0.72rem; line-height: 1.7; color: var(--faint);
+			background: linear-gradient(transparent, rgba(8,8,10,0.75));
+		}
+		#caption a { color: var(--dim); text-decoration: underline; text-underline-offset: 2px; }
+		#caption a:hover { color: var(--accent); }
+		#caption .patch { cursor: pointer; }
+		#caption .patch.on { color: var(--accent); }
+		@media (max-width: 600px) { #caption { font-size: 0.65rem; } }
+	</style>
+</head>
+<body>
+	<canvas id="view" aria-hidden="true"></canvas>
+	<div id="scrim" aria-hidden="true"></div>
+
+	<main>
+		<h1>Thomas O'Neill</h1>
+		<p class="line"><strong>Full-stack engineer</strong> — TypeScript · React · Node · Python</p>
+		<p class="line"><strong>3D &amp; interactive web</strong> — Three.js · React Three Fiber · WebGPU</p>
+		<p class="line avail">Available for contract work — London / remote</p>
+		<nav>
+			<a href="https://github.com/oneilltomhq">GitHub</a>
+			<a href="https://www.linkedin.com/in/oneilltomhq">LinkedIn</a>
+			<a href="/thomas-oneill-cv.pdf">CV (PDF)</a>
+			<a href="mailto:tom@oneilltom.com">tom@oneilltom.com</a>
+		</nav>
+	</main>
+
+	<div id="caption">
+		<span id="caption-live" hidden>This background is live — a <a href="https://hydra.ojack.xyz/">Hydra</a> video synth compiled to
+		<span id="lang">WGSL</span> via Three.js TSL, running on <span id="backend">WebGPU</span> in this tab right now.
+		<a href="https://github.com/oneilltomhq/oneilltom.com">view source ↗</a><br>
+		patch (click to recompile live):
+		<span class="patch" data-p="kaleid">kaleid</span> ·
+		<span class="patch" data-p="feedback">feedback</span> ·
+		<span class="patch" data-p="basic">basic</span></span>
+	</div>
+
+	<script type="importmap">
+	{
+		"imports": {
+			"three/webgpu": "/vendor/three.webgpu.min.js",
+			"three/tsl": "/vendor/three.tsl.min.js"
+		}
+	}
+	</script>
+
+	<script type="module">
+		// The page works without this script: visuals are progressive enhancement.
+		try {
+			const { HydraTSL } = await import('./hydra-tsl.js');
+
+			const canvas = document.getElementById('view');
+			const synth = new HydraTSL({ canvas, width: 960, height: 540 });
+			// the renderer pins inline 960×540 styles on the canvas; we want it stretched
+			canvas.style.width = '100vw';
+			canvas.style.height = '100vh';
+			await synth.init();
+			const { osc, noise, src, o0 } = synth.api;
+
+			const patches = {
+				kaleid: () =>
+					noise(3.5, 0.1)
+						.modulate(src(o0).scale(1.02).rotate(0.01), 0.025)
+						.kaleid(6)
+						.color(1.2, 0.8, 1.6)
+						.contrast(1.3)
+						.out(o0),
+				feedback: () =>
+					osc(10, 0.1, 1.0)
+						.rotate(0.4)
+						.modulate(src(o0).scale(1.04), 0.02)
+						.out(o0),
+				basic: () => osc(20, 0.1, 0.8).rotate(0.5).out(o0),
+			};
+
+			const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+			const setPatch = (name) => {
+				patches[name]();
+				document.querySelectorAll('.patch').forEach(
+					(el) => el.classList.toggle('on', el.dataset.p === name));
+				if (reduced) for (let i = 0; i < 30; i++) synth.tick(i / 10);
+			};
+			setPatch(patches[location.hash.slice(1)] ? location.hash.slice(1) : 'kaleid');
+			document.querySelectorAll('.patch').forEach((el) =>
+				el.addEventListener('click', () => setPatch(el.dataset.p)));
+
+			const isWebGPU = synth.backend === 'WebGPU';
+			document.getElementById('backend').textContent = synth.backend;
+			document.getElementById('lang').textContent = isWebGPU ? 'WGSL' : 'GLSL';
+			document.getElementById('caption-live').hidden = false;
+
+			const t0 = performance.now();
+			function loop() {
+				synth.tick((performance.now() - t0) / 1000);
+				if (!reduced) requestAnimationFrame(loop);
+			}
+			loop();
+			window.__ready = true;
+		} catch (e) {
+			// no WebGPU and no WebGL — leave the plain dark page
+			console.warn('background synth unavailable:', e);
+		}
+	</script>
+</body>
+</html>
