@@ -97,15 +97,16 @@
 		<span id="lang">WGSL</span> via Three.js TSL, running on <span id="backend">WebGPU</span> in this tab right now.
 		Because each patch compiles to a node graph rather than a fullscreen shader, the outputs are just materials —
 		a swarm of 128 bodies wears them, mixed per face in the shader. The boxes are live mirrors: every face
-		re-projects the previous frame of the whole scene, recursion until the pixels run out. Three invisible
-		spinning gravity wells trade the swarm between them; click anywhere to scatter. The physics is
-		hand-rolled, no engine.
+		re-projects the previous frame of the whole scene, recursion until the pixels run out. The globules
+		are a raymarched smooth-min SDF — no geometry, just the fragment shader — wearing the scene as a
+		warped mirror. Three invisible spinning gravity wells trade everything between them; click anywhere
+		to scatter. The physics is hand-rolled, no engine.
 		<a href="https://github.com/oneilltomhq/oneilltom.com">view source ↗</a><br>
 		background patch (click to recompile live):
 		<span class="patch" data-p="ink">ink</span> ·
 		<span class="patch" data-p="silk">silk</span> ·
 		<span class="patch" data-p="melt">melt</span>
-		<span style="float:right">build 2026-06-12.11-swarm</span></span>
+		<span style="float:right">build 2026-06-12.12-swarm</span></span>
 	</div>
 
 	<script type="importmap">
@@ -142,14 +143,15 @@
 		// The page works without this script: visuals are progressive enhancement.
 		try {
 			const { HydraTSL } = await import('./hydra-tsl.js');
-			const { Scene, PerspectiveCamera, InstancedMesh, BoxGeometry, TetrahedronGeometry,
-				OctahedronGeometry, MeshBasicNodeMaterial, DynamicDrawUsage,
+			const { Scene, PerspectiveCamera, InstancedMesh, Mesh, BoxGeometry, TetrahedronGeometry,
+				OctahedronGeometry, PlaneGeometry, MeshBasicNodeMaterial, DynamicDrawUsage,
 				Vector2, Vector3, Quaternion, Matrix4, Raycaster,
 				RenderTarget, QuadMesh, HalfFloatType, LinearFilter, ClampToEdgeWrapping } =
 				await import('three/webgpu');
-			const { texture, screenUV, uv, normalLocal, normalView, positionViewDirection,
-				instanceIndex, hash, select, uint } = await import('three/tsl');
-			const { MarchingCubes } = await import('/vendor/MarchingCubes.js');
+			const { texture, screenUV, uv, normalLocal, instanceIndex, hash, select, uint,
+				Fn, Loop, Break, If, Discard, uniformArray, uniform, float, vec3,
+				clamp, mix, length, normalize, cameraPosition, positionWorld } =
+				await import('three/tsl');
 
 			const canvas = document.getElementById('view');
 			const forceWebGL = new URLSearchParams(location.search).get('webgl') === '1';
@@ -304,23 +306,25 @@
 				return mesh;
 			});
 
-			// ---- globules: metaballs fed by invisible swarm bodies -------------
-			// PARKED behind ?globs=1 — the marching-cubes mesh collapses to
-			// ~2fps on BOTH backends (confirmed real-WebGPU in Brave and the
-			// WebGL fallback; reproduced in isolation with a static field and
-			// a plain material, so it is the draw of this mesh type itself,
-			// not our scene). Next attempt should use screen-space splatting
-			// or raymarched blobs instead of dynamic CPU geometry.
-			const GLOBS = new URLSearchParams(location.search).get('globs') === '1';
+			// ---- globules: raymarched metaballs fed by invisible bodies --------
+			// Attempt 1 (CPU MarchingCubes geometry) is parked at commit
+			// 1592319: that mesh type draws at ~2fps under WebGPURenderer on
+			// both backends. This is attempt 2: NO geometry. The globules are
+			// a smooth-min SDF over the blob bodies, sphere-traced in the
+			// fragment shader of one screen-aligned quad fitted to the blob
+			// cluster each frame; normals come from the SDF gradient. The
+			// same node graph emits WGSL and GLSL. Disable with ?globs=0.
+			const GLOBS = new URLSearchParams(location.search).get('globs') !== '0';
 			let updateGlobules = () => {};
 			if (GLOBS) {
-			// 16 extra bodies ride the same gravity-well physics but render as
-			// nothing — they are field sources for a CPU marching-cubes surface.
-			// Small separation radius lets them huddle and merge into
-			// amorphous globules that stretch and split as the wells trade them.
-			for (let i = 0; i < 16; i++) {
+			// blob bodies ride the same gravity-well physics but render as
+			// nothing — they are the SDF sources. Small separation radius lets
+			// them huddle so globules merge, stretch and split as the wells
+			// trade them.
+			const NBLOB = 12;
+			for (let i = 0; i < NBLOB; i++) {
 				bodies.push({
-					mesh: null, idx: 0, s: 1, r: 0.12,
+					mesh: null, idx: 0, s: 1, r: 0.14, rr: 0.26 + Math.random() * 0.16,
 					p: new Vector3((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 2.5,
 						(Math.random() - 0.5) * 2),
 					v: new Vector3(Math.random() - 0.5, Math.random() - 0.5,
@@ -333,39 +337,89 @@
 				});
 			}
 			const blobs = bodies.filter((b) => b.blob);
+			window.__blobs = blobs;
 
-			// the surface wears the scene itself, refracted: previous frame
-			// sampled at screenUV warped by the view-space normal — a curved,
-			// distorted infinite mirror (the globules also appear in their own
-			// reflections one frame late). Fresnel rim lifts the silhouette.
+			const blobPosU = uniformArray(blobs.map(() => new Vector3()));
+			const blobRadU = uniformArray(blobs.map((b) => b.rr), 'float');
+			const tNearU = uniform(1), tFarU = uniform(10);
+			const SMIN_K = 0.3;
+
+			const sdf = Fn(([p]) => {
+				const d = float(20).toVar();
+				Loop(NBLOB, ({ i }) => {
+					const di = length(p.sub(blobPosU.element(i))).sub(blobRadU.element(i));
+					// polynomial smooth-min folds each blob into the field
+					const h = clamp(di.sub(d).div(SMIN_K).mul(0.5).add(0.5), 0, 1);
+					d.assign(mix(di, d, h).sub(h.mul(h.oneMinus()).mul(SMIN_K)));
+				});
+				return d;
+			});
+
+			// surface: the previous frame, sampled at screenUV warped along
+			// the SDF normal — a curved, distorted infinite mirror (globules
+			// appear in their own skin one frame late). Fresnel rim adds a
+			// glow from the ember patch.
+			const blobSceneTex = texture(ping.read.texture); // .value re-pointed per frame
+			const blobRimTex = texture(displays[1].rt.texture);
 			const blobMat = new MeshBasicNodeMaterial();
-			const blobScene = texture(ping.read.texture,
-				screenUV.add(normalView.xy.mul(-0.24))); // .value re-pointed post-swap
-			const blobRim = texture(displays[1].rt.texture, screenUV);
-			{
-				const fresnel = positionViewDirection.dot(normalView).abs().oneMinus().pow(2);
-				blobMat.colorNode = blobScene.mul(fresnel.mul(0.9).add(0.6))
-					.add(blobRim.mul(fresnel.mul(0.4)));
-			}
-			const mc = new MarchingCubes(40, blobMat, false, false, 6000);
-			mc.position.set(0.7, 0, 0);
-			mc.scale.set(3.8, 2.6, 1.9);
-			mc.isolation = 80;
-			mc.frustumCulled = false;
-			scene.add(mc);
-			window.__mc = mc; window.__blobs = blobs; // test hooks
+			blobMat.transparent = true; // draw in the transparent pass, over the swarm
+			blobMat.depthWrite = false;
+			blobMat.colorNode = Fn(() => {
+				const ro = cameraPosition, rd = normalize(positionWorld.sub(cameraPosition));
+				const t = float(0).toVar(); t.assign(tNearU);
+				const hit = float(-1).toVar();
+				Loop(56, () => {
+					const d = sdf(ro.add(rd.mul(t)));
+					If(d.lessThan(0.012), () => { hit.assign(t); Break(); });
+					t.addAssign(d);
+					If(t.greaterThan(tFarU), () => { Break(); });
+				});
+				If(hit.lessThan(0), () => Discard());
+				const p = ro.add(rd.mul(hit));
+				const e = 0.02;
+				const n = normalize(vec3(
+					sdf(p.add(vec3(e, 0, 0))).sub(sdf(p.sub(vec3(e, 0, 0)))),
+					sdf(p.add(vec3(0, e, 0))).sub(sdf(p.sub(vec3(0, e, 0)))),
+					sdf(p.add(vec3(0, 0, e))).sub(sdf(p.sub(vec3(0, 0, e))))));
+				const fres = rd.dot(n).abs().oneMinus().pow(2);
+				const refr = blobSceneTex.sample(screenUV.add(n.xy.mul(-0.22)));
+				const rim = blobRimTex.sample(screenUV);
+				return refr.mul(fres.mul(0.85).add(0.55)).add(rim.mul(fres.mul(0.45)));
+			})();
+
+			const quad = new Mesh(new PlaneGeometry(1, 1), blobMat);
+			quad.frustumCulled = false;
+			scene.add(quad);
+			const QZ = 2.4; // quad plane sits just in front of the swarm volume
+			const ndc = new Vector3();
 			updateGlobules = () => {
-				blobScene.value = ping.read.texture; // stable until post-render swap
-				mc.reset();
-				for (const b of blobs) {
-					// world → field coords ([0,1]³ across the mc box), clamped
-					// so strays park at the field edge instead of vanishing
-					const fx = Math.min(0.95, Math.max(0.05, (b.p.x - mc.position.x) / mc.scale.x * 0.5 + 0.5));
-					const fy = Math.min(0.95, Math.max(0.05, (b.p.y - mc.position.y) / mc.scale.y * 0.5 + 0.5));
-					const fz = Math.min(0.95, Math.max(0.05, (b.p.z - mc.position.z) / mc.scale.z * 0.5 + 0.5));
-					mc.addBall(fx, fy, fz, 0.34, 12);
+				blobSceneTex.value = ping.read.texture; // stable until post-render swap
+				let x0 = 2, x1 = -2, y0 = 2, y1 = -2, dNear = 1e9, dFar = 0;
+				for (let i = 0; i < blobs.length; i++) {
+					const b = blobs[i];
+					blobPosU.array[i].copy(b.p);
+					const dist = camera.position.distanceTo(b.p);
+					const m = b.rr + SMIN_K + 0.1;
+					dNear = Math.min(dNear, dist - m); dFar = Math.max(dFar, dist + m);
+					// blob's NDC footprint: centre ± radius over the half-height
+					// of the frustum at the blob's depth
+					const halfH = Math.tan((camera.fov / 2) * Math.PI / 180) * (camera.position.z - b.p.z);
+					ndc.copy(b.p).project(camera);
+					x0 = Math.min(x0, ndc.x - m / (halfH * camera.aspect));
+					x1 = Math.max(x1, ndc.x + m / (halfH * camera.aspect));
+					y0 = Math.min(y0, ndc.y - m / halfH);
+					y1 = Math.max(y1, ndc.y + m / halfH);
 				}
-				mc.update();
+				tNearU.value = Math.max(0.5, dNear); tFarU.value = dFar;
+				x0 = Math.max(x0, -1.05); x1 = Math.min(x1, 1.05);
+				y0 = Math.max(y0, -1.05); y1 = Math.min(y1, 1.05);
+				quad.visible = x1 > x0 && y1 > y0;
+				if (!quad.visible) return;
+				// NDC bbox → world rect on the z = QZ plane
+				const hH = Math.tan((camera.fov / 2) * Math.PI / 180) * (camera.position.z - QZ);
+				const hW = hH * camera.aspect;
+				quad.position.set((x0 + x1) / 2 * hW, (y0 + y1) / 2 * hH, QZ);
+				quad.scale.set((x1 - x0) * hW, (y1 - y0) * hH, 1);
 			};
 			} // end GLOBS
 
