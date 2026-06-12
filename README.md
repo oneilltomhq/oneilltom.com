@@ -31,6 +31,17 @@ that: the background is one synth output (`scene.backgroundNode`), and the
 tumbling cube wears three more as ordinary mesh materials, all fed by the same
 ping-pong feedback passes each frame.
 
+## The cube physics
+
+No engine — a single rigid body ricocheting inside the camera frustum is ~60
+lines of integration: linear + angular velocity, quaternion update, and exact
+oriented-box-vs-wall contact (the cube's three rotated half-edge vectors
+projected onto the wall normal, so it visibly touches the wall it bounces
+off). Restitution 0.88, a little spin transfer on impact, faint drag with a
+speed floor so it never stalls. Pointer raycast applies an impulse at the hit
+point — off-centre pokes impart torque. Rapier/Jolt/cannon would be ~1.5MB of
+WASM to do the same job worse here.
+
 ## Run locally
 
 ```sh
