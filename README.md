@@ -33,14 +33,20 @@ ping-pong feedback passes each frame.
 
 ## The cube physics
 
-No engine — a single rigid body ricocheting inside the camera frustum is ~60
-lines of integration: linear + angular velocity, quaternion update, and exact
+No engine — a single body ricocheting inside the camera frustum is ~90 lines
+of integration: linear + angular velocity, quaternion update, and exact
 oriented-box-vs-wall contact (the cube's three rotated half-edge vectors
 projected onto the wall normal, so it visibly touches the wall it bounces
-off). Restitution 0.88, a little spin transfer on impact, faint drag with a
-speed floor so it never stalls. Pointer raycast applies an impulse at the hit
-point — off-centre pokes impart torque. Rapier/Jolt/cannon would be ~1.5MB of
-WASM to do the same job worse here.
+off).
+
+The energy model is the deliberately non-physical part: walls act as springs
+that launch the cube at a fixed speed, and flight has real exponential drag —
+so momentum peaks leaving a wall and eases off mid-screen, the speed profile
+of a gravity floor-bounce mapped onto all four viewport edges, in zero-G.
+Impacts squash the cube along the wall normal (per-axis damped springs on a
+holder group) and transfer a little spin. Pointer raycast applies an impulse
+at the hit point — off-centre pokes impart torque. Rapier/Jolt/cannon would
+be ~1.5MB of WASM to do the same job worse here.
 
 ## Run locally
 
