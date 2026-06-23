@@ -51,13 +51,20 @@ be ~1.5MB of WASM to do the same job worse here.
 ## Run locally
 
 ```sh
-python3 -m http.server 8000
-# open http://localhost:8000
+pnpm install
+pnpm dev          # http://localhost:5173
 ```
 
-No build step. `vendor/` contains the three.js (r185+) WebGPU builds (MIT,
-© Three.js Authors). Hydra is by [Olivia Jack](https://github.com/hydra-synth/hydra) (AGPL-3.0);
-hydra-tsl is an independent reimplementation of the transform/compiler idea.
+```sh
+pnpm build        # → dist/ (deployed by Vercel)
+pnpm preview      # serve the production build
+```
+
+[Vite](https://vite.dev) resolves bare `three` imports from npm (no hand-vendoring)
+and serves the page with HMR. The build is intentionally **unminified** so the
+deployed source stays readable. Three.js is MIT (© Three.js Authors); Hydra is by
+[Olivia Jack](https://github.com/hydra-synth/hydra) (AGPL-3.0) — hydra-tsl is an
+independent reimplementation of the transform/compiler idea.
 
 ## Testing
 
@@ -71,5 +78,6 @@ individually correct (clean screenshots), only the *sequence* was wrong
 Physics positions may only change via velocities and forces.
 
 ```sh
-node test/frame-continuity.mjs http://localhost:8000/
+pnpm dev                                          # in one terminal
+node test/frame-continuity.mjs http://localhost:5173/
 ```

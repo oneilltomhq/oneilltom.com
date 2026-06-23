@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 const browser = await chromium.launch({ args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-angle=vulkan', '--ignore-gpu-blocklist', '--enable-gpu'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-await page.goto(process.argv[2] || 'http://localhost:8941/', { waitUntil: 'networkidle' });
+await page.goto(process.argv[2] || 'http://localhost:5173/', { waitUntil: 'networkidle' });
 await page.waitForFunction('window.__ready === true', { timeout: 15000 });
 await page.waitForTimeout(1000);
 // sample position at EVERY consecutive frame; positions must be continuous:

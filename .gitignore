@@ -1,2 +1,6 @@
 tmp/
 .vercel
+node_modules/
+dist/
+.pnpm-store/
+*.local
