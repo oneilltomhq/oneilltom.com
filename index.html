@@ -140,6 +140,7 @@
 		// The page works without this script: visuals are progressive enhancement.
 		try {
 			const { HydraTSL } = await import('./hydra-tsl.js');
+			const { RaymarchedMetaballs } = await import('@oneilltom/lib3/metaballs');
 			const { Scene, PerspectiveCamera, InstancedMesh, Mesh, BoxGeometry, TetrahedronGeometry,
 				OctahedronGeometry, PlaneGeometry, MeshBasicNodeMaterial, DynamicDrawUsage,
 				Vector2, Vector3, Quaternion, Matrix4, Raycaster,
@@ -147,8 +148,7 @@
 				AdditiveBlending, DoubleSide } =
 				await import('three/webgpu');
 			const { texture, screenUV, uv, normalLocal, instanceIndex, hash, select, uint,
-				Fn, Loop, Break, If, Discard, uniformArray, uniform, float, vec2, vec3,
-				clamp, mix, length, normalize, cameraPosition, positionWorld, smoothstep } =
+				vec2, vec3, clamp, mix, length, normalize, positionWorld, smoothstep } =
 				await import('three/tsl');
 
 			const canvas = document.getElementById('view');
@@ -394,15 +394,12 @@
 			});
 
 			// ---- globules: raymarched metaballs fed by invisible bodies --------
-			// Attempt 1 (CPU MarchingCubes geometry) is parked at commit
-			// 1592319: that mesh type draws at ~2fps under WebGPURenderer on
-			// both backends. This is attempt 2: NO geometry. The globules are
-			// a smooth-min SDF over the blob bodies, sphere-traced in the
-			// fragment shader of one screen-aligned quad fitted to the blob
-			// cluster each frame; normals come from the SDF gradient. The
-			// same node graph emits WGSL and GLSL. Disable with ?globs=0.
+			// @oneilltom/lib3 RaymarchedMetaballs — same smooth-min SDF approach
+			// as the former inline shader, now a maintained module. Disable with
+			// ?globs=0.
 			const GLOBS = params.get('globs') !== '0';
 			let updateGlobules = () => {};
+			let blobs = [];
 			if (GLOBS) {
 			// blob bodies ride the same gravity-well physics but render as
 			// nothing — they are the SDF sources. Small separation radius lets
@@ -425,99 +422,9 @@
 					blob: true,
 				});
 			}
-			const blobs = bodies.filter((b) => b.blob);
+			blobs = bodies.filter((b) => b.blob);
 			window.__blobs = blobs;
-
-			const blobPosU = uniformArray(blobs.map(() => new Vector3()));
-			const blobRadU = uniformArray(blobs.map((b) => b.rr), 'float');
-			const tNearU = uniform(1), tFarU = uniform(10);
-			const SMIN_K = 0.3;
-
-			const sdf = Fn(([p]) => {
-				const d = float(20).toVar();
-				Loop(NBLOB, ({ i }) => {
-					const di = length(p.sub(blobPosU.element(i))).sub(blobRadU.element(i));
-					// polynomial smooth-min folds each blob into the field
-					const h = clamp(di.sub(d).div(SMIN_K).mul(0.5).add(0.5), 0, 1);
-					d.assign(mix(di, d, h).sub(h.mul(h.oneMinus()).mul(SMIN_K)));
-				});
-				return d;
-			});
-
-			// surface: the previous frame, sampled at screenUV warped along
-			// the SDF normal — a curved, distorted infinite mirror (globules
-			// appear in their own skin one frame late). Fresnel rim adds a
-			// glow from the ember patch, with a little detail patch folded in
-			// so the room texture reads through the liquid skin.
-			const blobSceneTex = texture(ping.read.texture); // .value re-pointed per frame
-			const blobRimTex = texture(displays[1].rt.texture);
-			const blobDetailTex = texture(displays[2].rt.texture);
-			const blobMat = new MeshBasicNodeMaterial();
-			blobMat.transparent = true; // draw in the transparent pass, over the swarm
-			blobMat.depthWrite = false;
-			blobMat.colorNode = Fn(() => {
-				const ro = cameraPosition, rd = normalize(positionWorld.sub(cameraPosition));
-				const t = float(0).toVar(); t.assign(tNearU);
-				const hit = float(-1).toVar();
-				Loop(56, () => {
-					const d = sdf(ro.add(rd.mul(t)));
-					If(d.lessThan(0.012), () => { hit.assign(t); Break(); });
-					t.addAssign(d);
-					If(t.greaterThan(tFarU), () => { Break(); });
-				});
-				If(hit.lessThan(0), () => Discard());
-				const p = ro.add(rd.mul(hit));
-				const e = 0.02;
-				const n = normalize(vec3(
-					sdf(p.add(vec3(e, 0, 0))).sub(sdf(p.sub(vec3(e, 0, 0)))),
-					sdf(p.add(vec3(0, e, 0))).sub(sdf(p.sub(vec3(0, e, 0)))),
-					sdf(p.add(vec3(0, 0, e))).sub(sdf(p.sub(vec3(0, 0, e))))));
-				const fres = rd.dot(n).abs().oneMinus().pow(2);
-				const softRefr = blobSceneTex.sample(screenUV.add(n.xy.mul(-0.12)));
-				const hardRefr = blobSceneTex.sample(screenUV.add(n.xy.mul(-0.34)));
-				const refr = mix(softRefr, hardRefr, fres.mul(0.55).add(0.25));
-				const rim = blobRimTex.sample(screenUV.add(n.xy.mul(0.08)));
-				const detail = blobDetailTex.sample(screenUV.add(n.xy.mul(0.16)));
-				return refr.mul(fres.mul(0.95).add(0.48))
-					.add(rim.mul(fres.mul(0.24)))
-					.add(detail.mul(fres.mul(0.09)));
-			})();
-
-			const quad = new Mesh(new PlaneGeometry(1, 1), blobMat);
-			quad.frustumCulled = false;
-			scene.add(quad);
-			const QZ = 2.4; // quad plane sits just in front of the swarm volume
-			const ndc = new Vector3();
-			updateGlobules = () => {
-				blobSceneTex.value = ping.read.texture; // stable until post-render swap
-				let x0 = 2, x1 = -2, y0 = 2, y1 = -2, dNear = 1e9, dFar = 0;
-				for (let i = 0; i < blobs.length; i++) {
-					const b = blobs[i];
-					blobPosU.array[i].copy(b.p);
-					const dist = camera.position.distanceTo(b.p);
-					const m = b.rr + SMIN_K + 0.1;
-					dNear = Math.min(dNear, dist - m); dFar = Math.max(dFar, dist + m);
-					// blob's NDC footprint: centre ± radius over the half-height
-					// of the frustum at the blob's depth
-					const halfH = Math.tan((camera.fov / 2) * Math.PI / 180) * (camera.position.z - b.p.z);
-					ndc.copy(b.p).project(camera);
-					x0 = Math.min(x0, ndc.x - m / (halfH * camera.aspect));
-					x1 = Math.max(x1, ndc.x + m / (halfH * camera.aspect));
-					y0 = Math.min(y0, ndc.y - m / halfH);
-					y1 = Math.max(y1, ndc.y + m / halfH);
-				}
-				tNearU.value = Math.max(0.5, dNear); tFarU.value = dFar;
-				x0 = Math.max(x0, -1.05); x1 = Math.min(x1, 1.05);
-				y0 = Math.max(y0, -1.05); y1 = Math.min(y1, 1.05);
-				quad.visible = x1 > x0 && y1 > y0;
-				if (!quad.visible) return;
-				// NDC bbox → world rect on the z = QZ plane
-				const hH = Math.tan((camera.fov / 2) * Math.PI / 180) * (camera.position.z - QZ);
-				const hW = hH * camera.aspect;
-				quad.position.set((x0 + x1) / 2 * hW, (y0 + y1) / 2 * hH, QZ);
-				quad.scale.set((x1 - x0) * hW, (y1 - y0) * hH, 1);
-			};
-			} // end GLOBS
+			} // end blob sources
 
 			const camera = new PerspectiveCamera(38, 1, 0.1, 50);
 			camera.position.z = 6;
@@ -588,6 +495,26 @@
 			};
 			resize();
 			addEventListener('resize', resize);
+
+			if (GLOBS && blobs.length) {
+				const metaballs = new RaymarchedMetaballs({
+					camera,
+					sources: blobs,
+					sceneTexture: ping.read.texture,
+					rimTexture: displays[1].rt.texture,
+					smoothing: 0.3,
+					quadZ: 2.4,
+					refractionStrength: 0.22,
+					fresnelStrength: 0.95,
+					fresnelBase: 0.48,
+					rimStrength: 0.24,
+				});
+				scene.add(metaballs.mesh);
+				updateGlobules = () => {
+					metaballs.setSceneTexture(ping.read.texture);
+					metaballs.update();
+				};
+			}
 
 			// ---- physics: three invisible gravity wells with spin --------------
 			// Force model adapted from three.js's webgpu_tsl_compute_attractors_
