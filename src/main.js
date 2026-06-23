@@ -82,13 +82,13 @@ async function main() {
 					.brightness(-0.23)
 					.out(o0),
 			signal: () =>
-				osc(10, 0.07, 0.25)
+				osc(6.5, 0.07, 0.25)
 					.kaleid(5)
 					.modulate(noise(4.5, 0.08), 0.26)
 					.modulate(src(o0).scale(1.045).rotate(0.015), 0.14)
-					.color(0.82, 0.46, 0.95)
-					.saturate(0.85)
-					.contrast(1.55)
+					.color(0.62, 0.48, 0.74)
+					.saturate(0.64)
+					.contrast(1.36)
 					.brightness(-0.14)
 					.out(o0),
 			// new transforms on show: voronoi cells, hue-cycled via colorama
