@@ -16,7 +16,7 @@ import {
 	uv, uniform, texture, time,
 	vec2, vec3, vec4, float,
 	sin, cos, atan, floor, fract, abs, mod, length, dot,
-	max, min, mix, clamp, smoothstep, pow,
+	max, min, mix, clamp, smoothstep, pow, step, select,
 	mx_noise_float, hue, saturation, luminance,
 } from 'three/tsl';
 
@@ -29,6 +29,26 @@ const state = { t: 0, outputs: [], defaultOut: null };
 const rot2 = ( p, ang ) => {
 	const c = cos( ang ), s = sin( ang );
 	return vec2( p.x.mul( c ).sub( p.y.mul( s ) ), p.x.mul( s ).add( p.y.mul( c ) ) );
+};
+
+// hydra's _rgbToHsv / _hsvToRgb (utility-functions.js) ported to TSL — used by
+// colorama. Standard Sam Hocevar branchless conversions.
+const rgbToHsv = ( c ) => {
+	const K = vec4( 0, -1 / 3, 2 / 3, -1 );
+	const p = mix( vec4( c.bg, K.wz ), vec4( c.gb, K.xy ), step( c.b, c.g ) );
+	const q = mix( vec4( p.xyw, c.r ), vec4( c.r, p.yzx ), step( p.x, c.r ) );
+	const d = q.x.sub( min( q.w, q.y ) );
+	const e = 1e-10;
+	return vec3(
+		q.z.add( q.w.sub( q.y ).div( d.mul( 6 ).add( e ) ) ).abs(),
+		d.div( q.x.add( e ) ),
+		q.x,
+	);
+};
+const hsvToRgb = ( c ) => {
+	const K = vec4( 1, 2 / 3, 1 / 3, 3 );
+	const p = fract( c.xxx.add( K.xyz ) ).mul( 6 ).sub( K.www ).abs();
+	return mix( K.xxx, clamp( p.sub( K.xxx ), 0, 1 ), c.y ).mul( c.z );
 };
 
 // ---------------------------------------------------------------------------
@@ -50,6 +70,25 @@ const defs = {
 	noise: { type: 'src', defaults: [ 10, 0.1 ], fn: ( st, scale, offset ) => {
 		const n = mx_noise_float( vec3( st.mul( scale ), offset.mul( time ) ) );
 		return vec4( vec3( n.mul( 0.5 ).add( 0.5 ) ), 1 );
+	} },
+
+	// 3×3 cellular noise — the JS loop unrolls at compile time into a flat node
+	// expression (no GPU loop), tracking nearest feature point/distance.
+	voronoi: { type: 'src', defaults: [ 5, 0.3, 0.3 ], fn: ( st, scale, speed, blending ) => {
+		const s = st.mul( scale );
+		const iSt = floor( s ), fSt = fract( s );
+		let mDist = float( 10 ), mPoint = vec2( 0, 0 );
+		for ( let j = -1; j <= 1; j ++ ) for ( let i = -1; i <= 1; i ++ ) {
+			const neighbor = vec2( i, j );
+			const p = iSt.add( neighbor );
+			let point = fract( sin( vec2( dot( p, vec2( 127.1, 311.7 ) ), dot( p, vec2( 269.5, 183.3 ) ) ) ).mul( 43758.5453 ) );
+			point = sin( time.mul( speed ).add( point.mul( 6.2831 ) ) ).mul( 0.5 ).add( 0.5 );
+			const dist = length( neighbor.add( point ).sub( fSt ) );
+			mPoint = select( dist.lessThan( mDist ), point, mPoint );
+			mDist = min( mDist, dist );
+		}
+		const c = dot( mPoint, vec2( 0.3, 0.6 ) ).mul( blending.mul( mDist ).oneMinus() );
+		return vec4( vec3( c ), 1 );
 	} },
 
 	gradient: { type: 'src', defaults: [ 0 ], fn: ( st, speed ) =>
@@ -120,6 +159,14 @@ const defs = {
 
 	saturate: { type: 'color', defaults: [ 2 ], fn: ( c, amount ) => vec4( saturation( c.rgb, amount ), c.a ) },
 
+	// rotate through HSV then fract back to RGB — the classic psychedelic banding
+	colorama: { type: 'color', defaults: [ 0.005 ], fn: ( c, amount ) =>
+		vec4( fract( hsvToRgb( rgbToHsv( c.rgb ).add( amount ) ) ), c.a ) },
+
+	// per-channel additive cycle (the shift amount itself is fract'd, as in hydra)
+	shift: { type: 'color', defaults: [ 0.5, 0, 0, 0 ], fn: ( c, r, g, b, a ) =>
+		c.add( fract( vec4( r, g, b, a ) ) ) },
+
 	// ---- combine : (c0, c1) -> vec4 ---------------------------------------
 	add: { type: 'combine', defaults: [ 1 ], fn: ( a, b, amount ) =>
 		a.add( b ).mul( amount ).add( a.mul( amount.oneMinus() ) ) },
@@ -154,6 +201,16 @@ const defs = {
 
 	modulateRotate: { type: 'combineCoord', defaults: [ 1, 0 ], fn: ( st, c, multiple, offset ) =>
 		rot2( st.sub( 0.5 ), float( offset ).add( c.x.mul( multiple ) ) ).add( 0.5 ) },
+
+	// kaleid whose fold count is driven by the modulating texture's red channel
+	modulateKaleid: { type: 'combineCoord', defaults: [ 4 ], fn: ( st, c, nSides ) => {
+		const p = st.sub( 0.5 );
+		const r = length( p );
+		const seg = float( Math.PI * 2 ).div( nSides );
+		let a = mod( atan( p.y, p.x ), seg );
+		a = a.sub( seg.div( 2 ) ).abs();
+		return vec2( cos( a ), sin( a ) ).mul( c.r.add( r ) );
+	} },
 };
 
 // ---------------------------------------------------------------------------

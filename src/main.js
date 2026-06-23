@@ -48,7 +48,7 @@ async function main() {
 		// patch buffers stay 960×540; the canvas itself renders at viewport size
 		const synth = new HydraTSL({ canvas, width: 960, height: 540, antialias: true, forceWebGL });
 		await synth.init();
-		const { osc, noise, src, o0, o1, o2, o3 } = synth.api;
+		const { osc, noise, voronoi, src, o0, o1, o2, o3 } = synth.api;
 	
 		// ---- background patches (o0) — muted, text-friendly ----------------
 		const backgrounds = {
@@ -88,6 +88,17 @@ async function main() {
 					.saturate(0.85)
 					.contrast(1.55)
 					.brightness(-0.14)
+					.out(o0),
+			// new transforms on show: voronoi cells, hue-cycled via colorama
+			cells: () =>
+				voronoi(6, 0.28, 0.2)
+					.modulate(src(o0).scale(1.014).rotate(0.005), 0.16)
+					.modulate(noise(2.4, 0.05), 0.04)
+					.colorama(0.018)
+					.color(0.46, 0.4, 0.6)
+					.saturate(0.7)
+					.contrast(1.22)
+					.brightness(-0.12)
 					.out(o0),
 		};
 	
@@ -149,7 +160,7 @@ async function main() {
 		// the liquid samples a surrounding environment, not a screen wallpaper.
 		const roomTex = (i, scaleX, scaleY, offX = 0, offY = 0) =>
 			texture(displays[i].rt.texture, uv().mul(vec2(scaleX, scaleY)).add(vec2(offX, offY)));
-		const mkChamberMat = (sx, sy, ox, oy, gain, rimGain, opacity, additive = false) => {
+		const mkChamberMat = (sx, sy, ox, oy, gain, rimGain, opacity, additive = false, hero = false) => {
 			const m = new MeshBasicNodeMaterial();
 			m.side = DoubleSide;
 			m.transparent = true;
@@ -177,6 +188,24 @@ async function main() {
 				x.mul(0.7).add(y.mul(1.1)).add(z.mul(0.35)).add(oy * 5.0).sin().mul(0.5).add(0.5));
 			const sparse = smoothstep(0.5, 0.88, strata.r).mul(verticalBand.mul(0.55).add(diagonalBand.mul(0.45)));
 			const haze = strata.mul(0.34).add(base.mul(0.66));
+			if (hero) {
+				// hero wall: show o0 (the live-switchable background patch)
+				// nearly raw — this is the surface that earns the page's
+				// "Hydra → WGSL, live" claim. Masking is deliberately minimal:
+				// just an edge feather, a touch of depth, and a left→right
+				// brightness ramp so the text side stays calm while the synth
+				// reads vividly on the right where the wells live.
+				const rightBias = smoothstep(-4.0, 5.0, x).mul(0.62).add(0.5); // ~0.5 L → ~1.12 R
+				m.colorNode = base.mul(0.84).add(strata.mul(0.16))
+					.mul(gain)
+					.mul(rightBias)
+					.mul(depthFade.mul(0.45).add(0.62))
+					.mul(uvFade.mul(0.32).add(0.68))
+					.add(ember.mul(sparse.mul(0.06 * rimGain)))
+					.add(cyan.mul(diagonalBand.mul(sparse).mul(0.05 * rimGain)))
+					.add(vec3(0.012, 0.02, 0.028).mul(depthFade));
+				return m;
+			}
 			m.colorNode = haze
 				.mul(gain)
 				.mul(uvFade.mul(0.45).add(0.55))
@@ -195,8 +224,8 @@ async function main() {
 			scene.add(mesh);
 			return mesh;
 		};
-		addPlane(14.0, 8.2, mkChamberMat(0.62, 0.48, 0.02, 0.04, 0.8, 0.9, 0.94),
-			[1.25, 0.0, -3.65], [0.015, -0.025, 0.01]);      // deep back field
+		addPlane(14.0, 8.2, mkChamberMat(0.62, 0.48, 0.02, 0.04, 1.18, 0.9, 0.96, false, true),
+			[1.25, 0.0, -3.65], [0.015, -0.025, 0.01]);      // deep back field — hero wall (o0, live)
 		addPlane(15.0, 7.0, mkChamberMat(0.58, 0.42, 0.18, 0.23, 0.54, 0.65, 0.62),
 			[1.15, -2.75, -0.82], [-1.15, 0.0, 0.012]);      // floor sweep
 		addPlane(13.5, 8.2, mkChamberMat(0.44, 0.5, 0.37, 0.08, 0.28, 0.42, 0.38),
