@@ -42,7 +42,9 @@ async function main() {
 	
 		const canvas = document.getElementById('view');
 		const forceWebGL = params.get('webgl') === '1';
-		const INSPECT = params.get('inspect') !== '0';
+		// Default is the autonomous drift camera (readable text, click to
+		// splash); ?inspect=1 opts into the manual drag-to-orbit camera.
+		const INSPECT = params.get('inspect') === '1';
 		const clampNumber = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 		if (INSPECT) document.body.classList.add('inspect');
 		// patch buffers stay 960×540; the canvas itself renders at viewport size
@@ -362,6 +364,35 @@ async function main() {
 			x: 0,
 			y: 0,
 		};
+		// ---- default camera: a slow, bounded drift (parallax, no path) ----
+		// The hard part of "move the camera in 3D" is the infinity of possible
+		// paths. Sidestep it: don't pick a path, keep the resting pose that
+		// already composes well (straight-on, text calm left, wells right,
+		// open front off-screen) and let the camera *breathe* around it on
+		// slow incommensurate sines — the same idiom the wells use to roam.
+		// Amplitudes are deliberately small: enough that the globules gain
+		// real parallax against the chamber walls, not so much that the front
+		// opening shows or the text side swings. lookAt(~0) keeps the gaze
+		// essentially down -Z (the current framing) with a faint sway.
+		const camRest = new Vector3(0, 0, 6);
+		const rollAxis = new Vector3(0, 0, 1); // camera local forward/back
+		const qRoll = new Quaternion();
+		const applyDriftCamera = (t) => {
+			camera.position.set(
+				camRest.x + 0.50 * Math.sin(t * 0.069) + 0.17 * Math.sin(t * 0.016 + 1.0),
+				camRest.y + 0.30 * Math.sin(t * 0.052 + 1.3),
+				camRest.z + 0.40 * Math.sin(t * 0.031 + 0.6));
+			camera.lookAt(
+				0.10 * Math.sin(t * 0.043 + 2.1),
+				0.08 * Math.sin(t * 0.061 + 0.4),
+				0);
+			// roll: a faint bank about the view axis — the one motion lookAt
+			// can't express (it always keeps the horizon level). Built as a
+			// quaternion about the camera's local Z and post-multiplied onto
+			// the gaze, so it composes in view space without gimbal issues.
+			qRoll.setFromAxisAngle(rollAxis, 0.05 * Math.sin(t * 0.037 + 0.5));
+			camera.quaternion.multiply(qRoll);
+		};
 		const applyInspectCamera = () => {
 			if (!INSPECT) return;
 			const s = Math.sin(inspectState.phi);
@@ -595,6 +626,11 @@ async function main() {
 			let dt = Math.min(t - last, 1 / 20); // clamp: tab refocus, hitches
 			last = t;
 			sim.t += dt;
+			// drift the default camera before stepping: downstream physics
+			// (frustum walls), the globule raymarcher and the render all see
+			// one consistent camera pose this frame. Inspect mode and reduced
+			// motion keep their fixed poses.
+			if (!INSPECT && !reduced) applyDriftCamera(t);
 			while (dt > 0) { const h = Math.min(dt, SUBSTEP); step(h, t - dt + h); dt -= h; }
 			syncInstances();
 			updateGlobules();
@@ -620,7 +656,7 @@ async function main() {
 				(el) => el.classList.toggle('on', el.dataset.p === name));
 			if (reduced) { for (let i = 0; i < 45; i++) synth.update(i / 10); frame(4.6); }
 		};
-		setBg(backgrounds[location.hash.slice(1)] ? location.hash.slice(1) : 'ink');
+		setBg(backgrounds[location.hash.slice(1)] ? location.hash.slice(1) : 'signal');
 		document.querySelectorAll('.patch').forEach((el) =>
 			el.addEventListener('click', () => setBg(el.dataset.p)));
 	
