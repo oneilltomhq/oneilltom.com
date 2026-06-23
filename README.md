@@ -18,7 +18,7 @@ noise(3.5, 0.1)
   .out(o0)          // ← real Hydra syntax → TSL node graph → WGSL
 ```
 
-The whole core is [`hydra-tsl.js`](hydra-tsl.js) (~300 lines): transform
+The whole core is [`src/hydra-tsl.js`](src/hydra-tsl.js) (~300 lines): transform
 definitions, a compiler (a port of hydra-synth's `generateGlsl()` recursion
 that emits TSL node closures instead of strings), ping-pong framebuffer
 feedback, and the synth class. The patch names in the page footer recompile
