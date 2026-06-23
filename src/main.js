@@ -224,18 +224,25 @@ async function main() {
 			scene.add(mesh);
 			return mesh;
 		};
-		addPlane(14.0, 8.2, mkChamberMat(0.62, 0.48, 0.02, 0.04, 1.18, 0.9, 0.96, false, true),
-			[1.25, 0.0, -3.65], [0.015, -0.025, 0.01]);      // deep back field — hero wall (o0, live)
-		addPlane(15.0, 7.0, mkChamberMat(0.58, 0.42, 0.18, 0.23, 0.54, 0.65, 0.62),
-			[1.15, -2.75, -0.82], [-1.15, 0.0, 0.012]);      // floor sweep
-		addPlane(13.5, 8.2, mkChamberMat(0.44, 0.5, 0.37, 0.08, 0.28, 0.42, 0.38),
-			[-5.35, 0.02, -1.65], [0.0, 0.72, 0.02]);        // left sweep
-		addPlane(16.0, 8.6, mkChamberMat(0.5, 0.54, 0.08, 0.44, 0.34, 0.5, 0.36),
-			[7.2, 0.04, -1.7], [0.0, -0.66, -0.02]);         // right/deep sweep
-		addPlane(14.0, 6.4, mkChamberMat(0.52, 0.36, 0.28, 0.61, 0.28, 0.35, 0.38, true),
-			[1.25, 2.7, -1.1], [1.04, 0.025, -0.01]);        // overhead haze
-		addPlane(12.0, 7.2, mkChamberMat(0.38, 0.32, 0.62, 0.18, 0.2, 0.3, 0.28, true),
-			[2.1, 0.25, -2.05], [0.06, -0.08, 0.0]);         // suspended atmosphere
+		// A coherent box: five planes (back / floor / ceiling / left / right)
+		// arranged as actual room walls that meet at right-angle corners,
+		// rather than a splayed funnel. The front is left open toward the
+		// camera. ROOM defines the box; each wall is sized to its two spans
+		// (back = w×h, floor/ceiling = w×d, sides = d×h) and positioned at a
+		// face centre, so adjacent edges line up at the corners.
+		const HALF_PI = Math.PI / 2;
+		const ROOM = { cx: 0.8, cy: 0.0, cz: 0.3, w: 15.0, h: 9.5, d: 9.0 };
+		const { cx, cy, cz, w: rw, h: rh, d: rd } = ROOM;
+		addPlane(rw, rh, mkChamberMat(0.62, 0.48, 0.02, 0.04, 1.18, 0.9, 0.96, false, true),
+			[cx, cy, cz - rd / 2], [0, 0, 0]);                 // back wall — hero (o0, live)
+		addPlane(rw, rd, mkChamberMat(0.58, 0.42, 0.18, 0.23, 0.54, 0.65, 0.62),
+			[cx, cy - rh / 2, cz], [-HALF_PI, 0, 0]);          // floor
+		addPlane(rw, rd, mkChamberMat(0.52, 0.36, 0.28, 0.61, 0.28, 0.35, 0.38, true),
+			[cx, cy + rh / 2, cz], [HALF_PI, 0, 0]);           // ceiling
+		addPlane(rd, rh, mkChamberMat(0.44, 0.5, 0.37, 0.08, 0.28, 0.42, 0.42),
+			[cx - rw / 2, cy, cz], [0, HALF_PI, 0]);           // left wall
+		addPlane(rd, rh, mkChamberMat(0.5, 0.54, 0.08, 0.44, 0.34, 0.5, 0.42),
+			[cx + rw / 2, cy, cz], [0, -HALF_PI, 0]);          // right wall
 	
 		// ---- the scene's own ping-pong: previous frame as a material -------
 		// Every frame the whole scene is rendered into one of these two
