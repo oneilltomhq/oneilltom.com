@@ -72,6 +72,12 @@
 		#caption a:hover { color: var(--accent); }
 		#caption .patch { cursor: pointer; }
 		#caption .patch.on { color: var(--accent); }
+		body.inspect { user-select: none; }
+		body.inspect #scrim { opacity: 0.28; }
+		body.inspect main { opacity: 0.24; transition: opacity 0.15s ease; }
+		body.inspect main:hover { opacity: 0.82; }
+		body.inspect #caption { opacity: 0.45; }
+		body.inspect #caption:hover { opacity: 1; }
 		@media (max-width: 600px) { #caption { font-size: 0.65rem; } }
 	</style>
 </head>
@@ -99,13 +105,15 @@
 		materials. The liquid is a raymarched smooth-min SDF — no geometry, just the fragment shader —
 		wearing the previous frame of the scene as a warped mirror. Three invisible spinning gravity wells
 		with different temperaments trade the globules between them; click anywhere to splash. The physics
-		is hand-rolled, no engine. (<a href="?swarm=1">?swarm=1</a> adds a 128-body instanced swarm.)
+		is hand-rolled, no engine. (<a href="?swarm=1">?swarm=1</a> adds a 128-body instanced swarm;
+		<a href="?inspect=0">?inspect=0</a> restores the fixed camera.)
 		<a href="https://github.com/oneilltomhq/oneilltom.com">view source ↗</a><br>
 		background patch (click to recompile live):
 		<span class="patch" data-p="ink">ink</span> ·
 		<span class="patch" data-p="silk">silk</span> ·
-		<span class="patch" data-p="melt">melt</span>
-		<span style="float:right">build 2026-06-12.13-swarm</span></span>
+		<span class="patch" data-p="melt">melt</span> ·
+		<span class="patch" data-p="signal">signal</span>
+		<span style="float:right">build 2026-06-14.1-chamber</span></span>
 	</div>
 
 	<script type="importmap">
@@ -145,15 +153,20 @@
 			const { Scene, PerspectiveCamera, InstancedMesh, Mesh, BoxGeometry, TetrahedronGeometry,
 				OctahedronGeometry, PlaneGeometry, MeshBasicNodeMaterial, DynamicDrawUsage,
 				Vector2, Vector3, Quaternion, Matrix4, Raycaster,
-				RenderTarget, QuadMesh, HalfFloatType, LinearFilter, ClampToEdgeWrapping } =
+				RenderTarget, QuadMesh, HalfFloatType, LinearFilter, ClampToEdgeWrapping, RepeatWrapping,
+				AdditiveBlending, DoubleSide } =
 				await import('three/webgpu');
 			const { texture, screenUV, uv, normalLocal, instanceIndex, hash, select, uint,
-				Fn, Loop, Break, If, Discard, uniformArray, uniform, float, vec3,
-				clamp, mix, length, normalize, cameraPosition, positionWorld } =
+				Fn, Loop, Break, If, Discard, uniformArray, uniform, float, vec2, vec3,
+				clamp, mix, length, normalize, cameraPosition, positionWorld, smoothstep } =
 				await import('three/tsl');
 
 			const canvas = document.getElementById('view');
-			const forceWebGL = new URLSearchParams(location.search).get('webgl') === '1';
+			const params = new URLSearchParams(location.search);
+			const forceWebGL = params.get('webgl') === '1';
+			const INSPECT = params.get('inspect') !== '0';
+			const clampNumber = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+			if (INSPECT) document.body.classList.add('inspect');
 			// patch buffers stay 960×540; the canvas itself renders at viewport size
 			const synth = new HydraTSL({ canvas, width: 960, height: 540, antialias: true, forceWebGL });
 			await synth.init();
@@ -163,49 +176,66 @@
 			const backgrounds = {
 				ink: () =>
 					noise(1.7, 0.06)
-						.modulate(src(o0).scale(1.012).rotate(0.004), 0.22)
-						.color(0.33, 0.37, 0.47)
-						.contrast(1.25)
-						.brightness(-0.07)
+						.modulate(src(o0).scale(1.012).rotate(0.004), 0.24)
+						.modulate(osc(3, 0.03, 0.2).rotate(0.35), 0.04)
+						.color(0.31, 0.36, 0.48)
+						.contrast(1.28)
+						.brightness(-0.09)
 						.out(o0),
 				silk: () =>
 					osc(4, 0.04, 0.8)
 						.modulate(noise(2.2, 0.06), 0.35)
-						.modulate(src(o0).rotate(0.008), 0.12)
-						.color(0.45, 0.38, 0.62)
+						.modulate(src(o0).scale(1.01).rotate(0.008), 0.16)
+						.color(0.44, 0.37, 0.58)
 						.saturate(0.65)
-						.contrast(1.25)
-						.brightness(-0.03)
+						.contrast(1.32)
+						.brightness(-0.06)
 						.out(o0),
 				melt: () =>
 					osc(8, 0.05, 0.9)
 						.rotate(0.4)
-						.modulate(src(o0).scale(1.025), 0.035)
-						.saturate(0.55)
-						.contrast(1.35)
-						.brightness(-0.2)
+						.modulate(noise(3.8, 0.07), 0.18)
+						.modulate(src(o0).scale(1.025).rotate(-0.006), 0.06)
+						.color(0.58, 0.5, 0.66)
+						.saturate(0.58)
+						.contrast(1.42)
+						.brightness(-0.23)
+						.out(o0),
+				signal: () =>
+					osc(10, 0.07, 0.25)
+						.kaleid(5)
+						.modulate(noise(4.5, 0.08), 0.26)
+						.modulate(src(o0).scale(1.045).rotate(0.015), 0.14)
+						.color(0.82, 0.46, 0.95)
+						.saturate(0.85)
+						.contrast(1.55)
+						.brightness(-0.14)
 						.out(o0),
 			};
 
-			// ---- cube face patches (o1..o3) — vivid against the muted bg -------
+			// ---- accent patches (o1..o3) — sampled sparsely in the chamber -----
 			osc(6, 0.06, 0.4)
+				.modulate(src(o1).scale(1.018).rotate(-0.01), 0.08)
 				.modulate(noise(2.6, 0.08), 0.35)
-				.color(1.4, 0.6, 0.3)
-				.saturate(0.75)
+				.color(1.25, 0.55, 0.32)
+				.saturate(0.82)
 				.contrast(1.4)
 				.out(o1); // ember
 			noise(2.8, 0.05)
 				.kaleid(7)
 				.modulate(src(o2).scale(1.03).rotate(0.012), 0.07)
-				.color(0.35, 0.95, 1.25)
-				.contrast(1.5)
+				.modulate(osc(5, 0.03, 0.7), 0.08)
+				.color(0.38, 0.9, 1.15)
+				.contrast(1.45)
 				.out(o2); // mandala
 			noise(1.6, 0.07)
-				.posterize(3, 0.6)
-				.color(0.7, 0.75, 1.25)
-				.contrast(1.2)
-				.out(o3); // strata — low-frequency on purpose: fine patterns shimmer
-				          // (temporal aliasing) on a rotating, mipmap-less face
+				.modulate(src(o3).scale(1.006).rotate(0.003), 0.1)
+				.modulate(osc(1.4, 0.025, 0.2).rotate(-0.55), 0.08)
+				.color(0.42, 0.54, 0.82)
+				.saturate(0.55)
+				.contrast(1.06)
+				.brightness(-0.08)
+				.out(o3); // slow strata/haze; avoid posterized room-scale stripes
 
 			// ---- stable display copies of each output ---------------------------
 			// The scene must NEVER sample the ping-pong buffers directly: their
@@ -217,7 +247,7 @@
 			const mkDisplay = (out) => {
 				const rt = new RenderTarget(960, 540, {
 					type: HalfFloatType, minFilter: LinearFilter, magFilter: LinearFilter,
-					wrapS: ClampToEdgeWrapping, wrapT: ClampToEdgeWrapping, depthBuffer: false,
+					wrapS: RepeatWrapping, wrapT: RepeatWrapping, depthBuffer: false,
 				});
 				const mat = new MeshBasicNodeMaterial();
 				mat.colorNode = out.texNode; // always points at out.read post-swap
@@ -233,7 +263,72 @@
 
 			// ---- composite scene: synth outputs as a background + materials ----
 			const scene = new Scene();
-			scene.backgroundNode = texture(displays[0].rt.texture, screenUV);
+			scene.backgroundNode = texture(displays[0].rt.texture, screenUV).mul(0.1)
+				.add(texture(displays[3].rt.texture, screenUV).mul(0.08));
+
+			// ---- atmospheric signal chamber -----------------------------------
+			// Stable Hydra display textures are mapped onto actual room planes so
+			// the liquid samples a surrounding environment, not a screen wallpaper.
+			const roomTex = (i, scaleX, scaleY, offX = 0, offY = 0) =>
+				texture(displays[i].rt.texture, uv().mul(vec2(scaleX, scaleY)).add(vec2(offX, offY)));
+			const mkChamberMat = (sx, sy, ox, oy, gain, rimGain, opacity, additive = false) => {
+				const m = new MeshBasicNodeMaterial();
+				m.side = DoubleSide;
+				m.transparent = true;
+				m.opacity = 1;
+				m.depthWrite = false;
+				if (additive) m.blending = AdditiveBlending;
+				const u = uv();
+				const uvFade = smoothstep(0.0, 0.18, u.x)
+					.mul(smoothstep(0.0, 0.18, u.y))
+					.mul(smoothstep(0.0, 0.18, u.x.oneMinus()))
+					.mul(smoothstep(0.0, 0.18, u.y.oneMinus()));
+				m.opacityNode = uvFade.mul(opacity);
+				const base = roomTex(0, sx, sy, ox, oy);
+				const strata = roomTex(3, sx * 0.72, sy * 0.58, ox + 0.13, oy + 0.29);
+				const ember = roomTex(1, sx * 1.12, sy * 0.82, ox + 0.41, oy + 0.07);
+				const cyan = roomTex(2, sx * 0.9, sy * 1.05, ox + 0.08, oy + 0.53);
+				const x = positionWorld.x, y = positionWorld.y, z = positionWorld.z;
+				const edgeX = smoothstep(-5.5, -2.4, x).mul(smoothstep(3.2, 6.0, x).oneMinus());
+				const edgeY = smoothstep(-3.3, -1.8, y).mul(smoothstep(2.0, 3.5, y).oneMinus());
+				const edgeDark = edgeX.mul(edgeY).mul(0.32).add(0.62);
+				const depthFade = smoothstep(-4.8, 1.2, z).mul(0.28).add(0.52);
+				const verticalBand = smoothstep(0.42, 1.0,
+					y.mul(1.45).add(z.mul(-0.5)).add(ox * 4.0).sin().mul(0.5).add(0.5));
+				const diagonalBand = smoothstep(0.48, 1.0,
+					x.mul(0.7).add(y.mul(1.1)).add(z.mul(0.35)).add(oy * 5.0).sin().mul(0.5).add(0.5));
+				const sparse = smoothstep(0.5, 0.88, strata.r).mul(verticalBand.mul(0.55).add(diagonalBand.mul(0.45)));
+				const haze = strata.mul(0.34).add(base.mul(0.66));
+				m.colorNode = haze
+					.mul(gain)
+					.mul(uvFade.mul(0.45).add(0.55))
+					.mul(edgeDark.mul(depthFade))
+					.add(strata.mul(verticalBand.mul(0.055)))
+					.add(ember.mul(sparse.mul(0.11 * rimGain)))
+					.add(cyan.mul(diagonalBand.mul(sparse).mul(0.08 * rimGain)))
+					.add(vec3(0.012, 0.02, 0.028).mul(depthFade));
+				return m;
+			};
+			const addPlane = (w, h, mat, pos, rot) => {
+				const mesh = new Mesh(new PlaneGeometry(w, h, 18, 18), mat);
+				mesh.position.set(pos[0], pos[1], pos[2]);
+				mesh.rotation.set(rot[0], rot[1], rot[2]);
+				mesh.frustumCulled = false;
+				scene.add(mesh);
+				return mesh;
+			};
+			addPlane(14.0, 8.2, mkChamberMat(0.62, 0.48, 0.02, 0.04, 0.8, 0.9, 0.94),
+				[1.25, 0.0, -3.65], [0.015, -0.025, 0.01]);      // deep back field
+			addPlane(15.0, 7.0, mkChamberMat(0.58, 0.42, 0.18, 0.23, 0.54, 0.65, 0.62),
+				[1.15, -2.75, -0.82], [-1.15, 0.0, 0.012]);      // floor sweep
+			addPlane(13.5, 8.2, mkChamberMat(0.44, 0.5, 0.37, 0.08, 0.28, 0.42, 0.38),
+				[-5.35, 0.02, -1.65], [0.0, 0.72, 0.02]);        // left sweep
+			addPlane(16.0, 8.6, mkChamberMat(0.5, 0.54, 0.08, 0.44, 0.34, 0.5, 0.36),
+				[7.2, 0.04, -1.7], [0.0, -0.66, -0.02]);         // right/deep sweep
+			addPlane(14.0, 6.4, mkChamberMat(0.52, 0.36, 0.28, 0.61, 0.28, 0.35, 0.38, true),
+				[1.25, 2.7, -1.1], [1.04, 0.025, -0.01]);        // overhead haze
+			addPlane(12.0, 7.2, mkChamberMat(0.38, 0.32, 0.62, 0.18, 0.2, 0.3, 0.28, true),
+				[2.1, 0.25, -2.05], [0.06, -0.08, 0.0]);         // suspended atmosphere
 
 			// ---- the scene's own ping-pong: previous frame as a material -------
 			// Every frame the whole scene is rendered into one of these two
@@ -277,7 +372,7 @@
 
 			// ?swarm=1 brings back the instanced-primitive swarm alongside the
 			// globules; default is the minimal globules-only composition
-			const SWARM = new URLSearchParams(location.search).get('swarm') === '1';
+			const SWARM = params.get('swarm') === '1';
 			const KINDS = !SWARM ? [] : [
 				{ geo: new BoxGeometry(0.3, 0.3, 0.3), count: 56, r: 0.26, mirror: true },
 				{ geo: new TetrahedronGeometry(0.26), count: 36, r: 0.2 },
@@ -316,7 +411,7 @@
 			// fragment shader of one screen-aligned quad fitted to the blob
 			// cluster each frame; normals come from the SDF gradient. The
 			// same node graph emits WGSL and GLSL. Disable with ?globs=0.
-			const GLOBS = new URLSearchParams(location.search).get('globs') !== '0';
+			const GLOBS = params.get('globs') !== '0';
 			let updateGlobules = () => {};
 			if (GLOBS) {
 			// blob bodies ride the same gravity-well physics but render as
@@ -362,9 +457,11 @@
 			// surface: the previous frame, sampled at screenUV warped along
 			// the SDF normal — a curved, distorted infinite mirror (globules
 			// appear in their own skin one frame late). Fresnel rim adds a
-			// glow from the ember patch.
+			// glow from the ember patch, with a little detail patch folded in
+			// so the room texture reads through the liquid skin.
 			const blobSceneTex = texture(ping.read.texture); // .value re-pointed per frame
 			const blobRimTex = texture(displays[1].rt.texture);
+			const blobDetailTex = texture(displays[2].rt.texture);
 			const blobMat = new MeshBasicNodeMaterial();
 			blobMat.transparent = true; // draw in the transparent pass, over the swarm
 			blobMat.depthWrite = false;
@@ -386,9 +483,14 @@
 					sdf(p.add(vec3(0, e, 0))).sub(sdf(p.sub(vec3(0, e, 0)))),
 					sdf(p.add(vec3(0, 0, e))).sub(sdf(p.sub(vec3(0, 0, e))))));
 				const fres = rd.dot(n).abs().oneMinus().pow(2);
-				const refr = blobSceneTex.sample(screenUV.add(n.xy.mul(-0.22)));
-				const rim = blobRimTex.sample(screenUV);
-				return refr.mul(fres.mul(0.85).add(0.55)).add(rim.mul(fres.mul(0.45)));
+				const softRefr = blobSceneTex.sample(screenUV.add(n.xy.mul(-0.12)));
+				const hardRefr = blobSceneTex.sample(screenUV.add(n.xy.mul(-0.34)));
+				const refr = mix(softRefr, hardRefr, fres.mul(0.55).add(0.25));
+				const rim = blobRimTex.sample(screenUV.add(n.xy.mul(0.08)));
+				const detail = blobDetailTex.sample(screenUV.add(n.xy.mul(0.16)));
+				return refr.mul(fres.mul(0.95).add(0.48))
+					.add(rim.mul(fres.mul(0.24)))
+					.add(detail.mul(fres.mul(0.09)));
 			})();
 
 			const quad = new Mesh(new PlaneGeometry(1, 1), blobMat);
@@ -429,6 +531,58 @@
 
 			const camera = new PerspectiveCamera(38, 1, 0.1, 50);
 			camera.position.z = 6;
+			const inspectTarget = new Vector3(0.8, 0.0, -0.35);
+			const inspectState = {
+				radius: 6.2,
+				theta: -0.08,
+				phi: Math.PI * 0.5,
+				dragging: false,
+				dragged: false,
+				x: 0,
+				y: 0,
+			};
+			const applyInspectCamera = () => {
+				if (!INSPECT) return;
+				const s = Math.sin(inspectState.phi);
+				camera.position.set(
+					inspectTarget.x + inspectState.radius * s * Math.sin(inspectState.theta),
+					inspectTarget.y + inspectState.radius * Math.cos(inspectState.phi),
+					inspectTarget.z + inspectState.radius * s * Math.cos(inspectState.theta));
+				camera.lookAt(inspectTarget);
+			};
+			if (INSPECT) {
+				applyInspectCamera();
+				addEventListener('pointerdown', (ev) => {
+					if (ev.target.closest('a, .patch')) return;
+					ev.preventDefault();
+					inspectState.dragging = true;
+					inspectState.dragged = false;
+					inspectState.x = ev.clientX;
+					inspectState.y = ev.clientY;
+					canvas.setPointerCapture?.(ev.pointerId);
+				});
+				addEventListener('pointermove', (ev) => {
+					if (!inspectState.dragging) return;
+					ev.preventDefault();
+					const dx = ev.clientX - inspectState.x;
+					const dy = ev.clientY - inspectState.y;
+					inspectState.x = ev.clientX;
+					inspectState.y = ev.clientY;
+					if (Math.abs(dx) + Math.abs(dy) > 2) inspectState.dragged = true;
+					inspectState.theta -= dx * 0.006;
+					inspectState.phi = clampNumber(inspectState.phi + dy * 0.005, 0.28, Math.PI - 0.28);
+					applyInspectCamera();
+				});
+				addEventListener('pointerup', (ev) => {
+					inspectState.dragging = false;
+					canvas.releasePointerCapture?.(ev.pointerId);
+				});
+				addEventListener('wheel', (ev) => {
+					ev.preventDefault();
+					inspectState.radius = clampNumber(inspectState.radius * Math.exp(ev.deltaY * 0.001), 2.2, 11);
+					applyInspectCamera();
+				}, { passive: false });
+			}
 
 			const resize = () => {
 				const pr = Math.min(devicePixelRatio, 1.75);
@@ -440,6 +594,7 @@
 				ping.write.setSize(Math.round(innerWidth * pr), Math.round(innerHeight * pr));
 				camera.aspect = innerWidth / innerHeight;
 				camera.updateProjectionMatrix();
+				applyInspectCamera();
 			};
 			resize();
 			addEventListener('resize', resize);
@@ -573,7 +728,7 @@
 			// swarm; the attractor gathers it back up
 			const raycaster = new Raycaster(), pointer = new Vector2();
 			addEventListener('pointerdown', (ev) => {
-				if (ev.target.closest('a, .patch')) return;
+				if (INSPECT || ev.target.closest('a, .patch')) return;
 				pointer.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
 				raycaster.setFromCamera(pointer, camera);
 				const ro = raycaster.ray.origin, rd = raycaster.ray.direction;
@@ -614,7 +769,8 @@
 				const r = ping.read; ping.read = ping.write; ping.write = r;
 			};
 			window.__body = bodies[0]; window.__bodies = bodies;
-			window.__wells = wells; window.__sim = sim; // test hooks
+			window.__wells = wells; window.__sim = sim;
+			window.__camera = camera; window.__inspect = inspectState; // test hooks
 
 			const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 			const setBg = (name) => {
