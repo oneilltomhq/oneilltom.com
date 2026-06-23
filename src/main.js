@@ -333,8 +333,11 @@ async function main() {
 		// trade them.
 		const NBLOB = SWARM ? 12 : 22;
 		for (let i = 0; i < NBLOB; i++) {
-			// skewed size distribution: a crowd of droplets, a few heavies
-			const rr = 0.1 + Math.pow(Math.random(), 1.7) * 0.48;
+			// skewed size distribution: a crowd of droplets, a few heavies.
+			// floor lifted clear of `smoothing` so the small ones read as
+			// their own size instead of being swallowed by the merge; the
+			// gentler exponent + wider span pushes a few genuine giants out
+			const rr = 0.16 + Math.pow(Math.random(), 1.4) * 0.66;
 			bodies.push({
 				mesh: null, idx: 0, s: 1, r: Math.max(0.08, rr * 0.55), rr,
 				p: new Vector3((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 2.5,
@@ -457,7 +460,7 @@ async function main() {
 				sources: blobs,
 				sceneTexture: ping.read.texture,
 				rimTexture: displays[1].rt.texture,
-				smoothing: 0.3,
+				smoothing: 0.22,
 				quadZ: 2.4,
 				refractionStrength: 0.22,
 				fresnelStrength: 0.95,
@@ -484,12 +487,20 @@ async function main() {
 		// class behind 'the glitch'. Soft frustum walls instead. Positions
 		// change ONLY via velocities (see test/frame-continuity.mjs).
 		const GRAV = 2.6;                         // G·M, per-body mass in b.pull
-		const SOFT2 = 0.3 * 0.3;                  // softening radius² (d² += this)
-		const SPIN = 2.4;                         // spin force vs gravity strength
+		const SOFT2 = 0.24 * 0.24;               // softening radius² (d² += this)
+		                                          // tighter core → sharper gravity
+		                                          // peak → fast periapsis swoops,
+		                                          // slow apoapsis drift (Kepler)
+		const SPIN = 1.4;                         // spin force vs gravity strength —
+		                                          // eased so gravity wins and orbits
+		                                          // go elliptical, not a forced
+		                                          // constant-speed circular limit cycle
 		const SEP_K = 0.7, SEP_F_MAX = 2.5;       // soft mutual repulsion
 		const WANDER = 0.1;
-		const DRAG = 1.1;                         // per-second exponential — heavy,
-		                                          // the spin term feeds energy back
+		const DRAG = 0.6;                         // per-second exponential — lighter,
+		                                          // so velocity keeps its memory and
+		                                          // bodies coast (momentum) instead of
+		                                          // settling to a terminal speed
 		const SPEED_MAX = 2.6, SPEED_CAP = 3.2;   // soft governor, hard ceiling
 		                                          // (test budget = 3.4, keep in sync)
 		const Z_RANGE = 1.5;
@@ -530,8 +541,10 @@ async function main() {
 					0.45 * Math.sin(0.06 * t + w.ph),
 					0.45 * Math.cos(0.08 * t + w.ph * 1.3),
 					i === 1 ? -1 : 1).normalize(); // middle well counter-rotates
-				// mood: swing between ~0.45x (dormant) and ~1.55x (raging)
-				w.mood = 1 + 0.55 * Math.sin(0.07 * w.sp * t + w.ph * 2.7);
+				// mood: swing between ~0.25x (dormant) and ~1.75x (raging) —
+				// a wider swing so the cloud has real lulls and real surges
+				// rather than a steady mid hum
+				w.mood = 1 + 0.75 * Math.sin(0.07 * w.sp * t + w.ph * 2.7);
 			}
 			// pairwise soft separation — O(n²)/2 ≈ 8k pairs, cheap at this n.
 			// Strength (R²/d² − 1): zero at the support edge, ramps smoothly
