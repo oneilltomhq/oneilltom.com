@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>lib3 smoke test — @oneilltom/lib3</title>
+	<style>
+		* { box-sizing: border-box; }
+		html, body {
+			margin: 0; min-height: 100%;
+			background: #0a0a0c;
+			font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+			color: #e8e8e4;
+		}
+		#view {
+			position: fixed; inset: 0;
+			width: 100vw; height: 100vh;
+		}
+		#hud {
+			position: fixed; left: 0; right: 0; bottom: 0; z-index: 2;
+			padding: 1rem 1.25rem 1.2rem;
+			font-size: 0.78rem; line-height: 1.65;
+			color: #a8a8a4;
+			background: linear-gradient(transparent, rgba(8, 8, 10, 0.88));
+			pointer-events: none;
+		}
+		#hud strong { color: #f2f2f0; }
+		#hud a { color: #c8b6ff; pointer-events: auto; }
+		#hud .ok { color: #7dff9b; }
+		#hud .err { color: #ff8a8a; }
+	</style>
+</head>
+<body>
+	<canvas id="view" aria-label="lib3 smoke test scene"></canvas>
+	<div id="hud">loading <strong>@oneilltom/lib3</strong>…</div>
+
+	<script type="module">
+		const hud = document.getElementById('hud');
+		const LIB3_VERSION = '0.2.1';
+
+		const setHud = (html) => { hud.innerHTML = html; };
+
+		try {
+			const THREE = await import('three/webgpu');
+			const { RaymarchedMetaballs } = await import('@oneilltom/lib3/metaballs');
+			const { BatchedText, Text } = await import('@oneilltom/lib3/sdf-text');
+
+			const canvas = document.getElementById('view');
+			const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
+			renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+			const scene = new THREE.Scene();
+			scene.background = new THREE.Color(0x0b0d12);
+
+			const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+			camera.position.set(0, 0, 7);
+
+			const sources = Array.from({ length: 10 }, (_, i) => ({
+				position: new THREE.Vector3(),
+				radius: 0.16 + (i % 4) * 0.07,
+				phase: i * 0.91,
+			}));
+
+			const metaballs = new RaymarchedMetaballs({
+				camera,
+				sources,
+				smoothing: 0.55,
+				refractionStrength: 0.12,
+				fresnelStrength: 0.7,
+				rimStrength: 0.35,
+				quadZ: 2.2,
+			});
+			scene.add(metaballs.mesh);
+
+			const batched = new BatchedText(8, 128, undefined, {
+				fontFamily: 'ui-monospace, monospace',
+				outlineWidth: 0.03,
+			});
+			scene.add(batched);
+
+			function addLine(str, { y, fontSize, color }) {
+				const t = new Text();
+				t.text = str;
+				t.fontSize = fontSize;
+				t.anchorX = 'center';
+				t.anchorY = 'middle';
+				t.color.set(color);
+				t.position.set(0, y, 0);
+				scene.add(t);
+				batched.addText(t);
+				return t;
+			}
+
+			const label = addLine(`@oneilltom/lib3@${LIB3_VERSION}`, {
+				y: 2.1,
+				fontSize: 0.42,
+				color: 0xb8f0ff,
+			});
+			const sub = addLine('metaballs + sdf-text from npm', {
+				y: 1.55,
+				fontSize: 0.24,
+				color: 0xf0b8ff,
+			});
+
+			console.info('[lib3-smoke] RaymarchedMetaballs', RaymarchedMetaballs);
+			console.info('[lib3-smoke] BatchedText', BatchedText, 'glyphs', batched.atlas.glyphs.size);
+
+			function resize() {
+				const w = innerWidth;
+				const h = innerHeight;
+				camera.aspect = w / h;
+				camera.updateProjectionMatrix();
+				renderer.setSize(w, h);
+			}
+			addEventListener('resize', resize);
+			resize();
+
+			setHud(
+				`<span class="ok">ok</span> — <strong>@oneilltom/lib3@${LIB3_VERSION}</strong> ` +
+				`via <strong>npm</strong> · RaymarchedMetaballs + BatchedText · ` +
+				`<a href="/">main site</a>`
+			);
+
+			await renderer.init();
+
+			function animate(now) {
+				requestAnimationFrame(animate);
+				const t = now * 0.001;
+
+				for (let i = 0; i < sources.length; i++) {
+					const s = sources[i];
+					const a = t * (0.55 + (i % 3) * 0.12) + s.phase;
+					s.position.set(
+						Math.sin(a * 1.2) * 1.4,
+						Math.sin(a * 0.9 + i) * 0.85,
+						Math.cos(a * 1.05) * 0.9,
+					);
+				}
+
+				metaballs.update();
+				const wobble = Math.sin(t * 0.6) * 0.04;
+				label.rotation.z = wobble;
+				label.updateMatrixWorld();
+				batched.setMatrixAt(0, label.matrixWorld);
+				sub.updateMatrixWorld();
+				batched.setMatrixAt(1, sub.matrixWorld);
+				batched.sync();
+
+				renderer.renderAsync(scene, camera);
+			}
+
+			animate(0);
+		} catch (err) {
+			console.error('[lib3-smoke]', err);
+			setHud(
+				`<span class="err">failed</span> — ${err.message}<br>` +
+				`Run <code>pnpm install</code> then <code>pnpm dev</code> and open ` +
+				`<a href="/lib3-smoke.html">/lib3-smoke.html</a>.`
+			);
+		}
+	</script>
+</body>
+</html>
