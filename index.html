@@ -6,9 +6,12 @@
 	<title>Thomas O'Neill — full-stack &amp; creative web engineer</title>
 	<meta name="description" content="Thomas O'Neill — full-stack engineer (TypeScript, React, Node) specialising in 3D and interactive web: Three.js, React Three Fiber, WebGPU. Available for contract work, London / remote.">
 	<meta property="og:title" content="Thomas O'Neill — full-stack &amp; creative web engineer">
-	<meta property="og:description" content="The background of this page is a Hydra video synth compiled to WGSL via Three.js TSL, running live on WebGPU.">
+	<meta property="og:description" content="The background is a Hydra-style video synth I rebuilt on Three.js TSL, compiled to WGSL and running on WebGPU.">
 	<meta property="og:url" content="https://oneilltom.com">
 	<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>〜</text></svg>">
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Source+Code+Pro:wght@300;400&display=swap">
 	<style>
 		:root {
 			--fg: #f2f2f0;
@@ -20,7 +23,7 @@
 		html, body {
 			margin: 0; min-height: 100%;
 			background: #0a0a0c;
-			font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+			font-family: 'Source Code Pro', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
 			color: var(--fg);
 		}
 		#view {
@@ -43,8 +46,9 @@
 		}
 		h1 {
 			margin: 0 0 1.4rem;
-			font-size: clamp(1.9rem, 5vw, 3.2rem);
-			font-weight: 600; letter-spacing: -0.02em;
+			font-family: 'EB Garamond', Georgia, serif;
+			font-size: clamp(1.8rem, 4.5vw, 2.9rem);
+			font-weight: 400; letter-spacing: 0.015em;
 			text-shadow: 0 1px 12px rgba(0,0,0,0.6);
 		}
 		.line {
@@ -53,8 +57,11 @@
 			text-shadow: 0 1px 8px rgba(0,0,0,0.7);
 		}
 		.line strong { color: var(--fg); font-weight: 600; }
+		.line.keywords {
+			color: var(--faint); margin-top: 0.15rem;
+			font-size: clamp(0.78rem, 1.8vw, 0.95rem);
+		}
 		.avail { margin-top: 1.1rem; color: var(--fg); }
-		.avail::before { content: '● '; color: #7dff9b; }
 		nav { margin-top: 2.2rem; display: flex; flex-wrap: wrap; gap: 0.6rem 1.6rem; }
 		nav a {
 			color: var(--fg); text-decoration: none;
@@ -87,8 +94,8 @@
 
 	<main>
 		<h1>Thomas O'Neill</h1>
-		<p class="line"><strong>Full-stack engineer</strong> — TypeScript · React · Node · Python</p>
-		<p class="line"><strong>3D &amp; interactive web</strong> — Three.js · React Three Fiber · WebGPU</p>
+		<p class="line"><strong>Full-stack engineer — 3D &amp; interactive web</strong></p>
+		<p class="line keywords">Three.js · WebGPU · React Three Fiber · React · TypeScript · Node</p>
 		<p class="line avail">Available for contract work — London / remote</p>
 		<nav>
 			<a href="https://github.com/oneilltomhq">GitHub</a>
@@ -99,22 +106,9 @@
 	</main>
 
 	<div id="caption">
-		<span id="caption-live" hidden>Everything moving is live — a <a href="https://hydra.ojack.xyz/">Hydra</a> video synth compiled to
-		<span id="lang">WGSL</span> via Three.js TSL, running on <span id="backend">WebGPU</span> in this tab right now.
-		Because each patch compiles to a node graph rather than a fullscreen shader, the outputs are just
-		materials. The liquid is a raymarched smooth-min SDF — no geometry, just the fragment shader —
-		wearing the previous frame of the scene as a warped mirror. Three invisible spinning gravity wells
-		with different temperaments trade the globules between them; click anywhere to splash. The physics
-		is hand-rolled, no engine. (<a href="?swarm=1">?swarm=1</a> adds a 128-body instanced swarm;
-		<a href="?inspect=1">?inspect=1</a> swaps the drifting camera for a drag-to-orbit one.)
-		<a href="https://github.com/oneilltomhq/oneilltom.com">view source ↗</a><br>
-		background patch (click to recompile live):
-		<span class="patch" data-p="ink">ink</span> ·
-		<span class="patch" data-p="silk">silk</span> ·
-		<span class="patch" data-p="melt">melt</span> ·
-		<span class="patch" data-p="signal">signal</span> ·
-		<span class="patch" data-p="cells">cells</span>
-		<span style="float:right">build 2026-06-14.1-chamber</span></span>
+		<span id="caption-live" hidden>Everything moving is live — a <a href="https://hydra.ojack.xyz/">Hydra</a>-style video synth
+		I rebuilt on Three.js TSL, compiled to <span id="lang">WGSL</span> and running on <span id="backend">WebGPU</span>, with
+		hand-rolled physics (no engine). <a href="https://github.com/oneilltomhq/oneilltom.com">view&nbsp;source&nbsp;↗</a></span>
 	</div>
 
 	<script type="module" src="/src/main.js"></script>
