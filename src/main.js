@@ -1,5 +1,7 @@
 import { HydraTSL } from './hydra-tsl.js';
-import { FlubberField } from './flubber.js';
+import {
+	FlubberField, wellDriver, noiseFlowDriver, cohesionDriver, burstDriver,
+} from '@oneilltom/lib3/flubber';
 import {
 	Scene, PerspectiveCamera, InstancedMesh, Mesh, BoxGeometry, TetrahedronGeometry,
 	OctahedronGeometry, PlaneGeometry, MeshBasicNodeMaterial, DynamicDrawUsage,
@@ -322,11 +324,12 @@ async function main() {
 		// ---- globules: the metaball surface (GPU flubber field) ------------
 		// The shape lives in a GPU storage substrate now — particles in storage
 		// buffers, driven by the same roaming wells, splatted into a density
-		// texture and marched as one emergent isosurface (see src/flubber.js).
-		// No CPU sphere sources anymore. Constructed below, once the wells it
-		// reads are defined. Disable with ?globs=0.
+		// texture and marched as one emergent isosurface (FlubberField from
+		// @oneilltom/lib3/flubber). No CPU sphere sources anymore. Constructed
+		// below, once the wells it reads are defined. Disable with ?globs=0.
 		const GLOBS = params.get('globs') !== '0';
 		let flubber = null;
+		let flubberBurst = null; // click-shockwave driver, triggered on pointerdown
 	
 		const camera = new PerspectiveCamera(38, 1, 0.1, 50);
 		camera.position.z = 6;
@@ -475,10 +478,15 @@ async function main() {
 		// splatted to a density texture, marched with the site-tuned glass
 		// (refraction samples the scene ping-pong, aspect-correct).
 		if (GLOBS) {
+			// same motion feel as the old inline field: gravity wells + a little
+			// noise for surface life + cohesion to keep the mass coherent, plus a
+			// click shockwave. FlubberField's defaults (count/grid/box/glass) match
+			// the site's tuned values, so only the drivers and textures differ.
+			flubberBurst = burstDriver();
 			flubber = new FlubberField({
 				renderer: synth.renderer,
 				camera,
-				wells,
+				drivers: [wellDriver({ wells }), noiseFlowDriver(), cohesionDriver(), flubberBurst],
 				sceneTexture: ping.read.texture,
 				rimTexture: displays[1].rt.texture,
 			});
@@ -602,10 +610,10 @@ async function main() {
 			}
 			// GPU field shockwave: kick particles out from where the ray
 			// crosses the blob's depth plane, under the cursor
-			if (flubber) {
+			if (flubberBurst) {
 				const tz = Math.abs(rd.z) > 1e-3 ? (flubber.center.z - ro.z) / rd.z : 6;
 				const bp = ro.clone().addScaledVector(rd, Math.max(0.5, tz));
-				flubber.burst(bp, 1.8, 22);
+				flubberBurst.trigger(bp, 1.8, 22);
 			}
 		});
 	
@@ -628,7 +636,7 @@ async function main() {
 			// point refraction at last frame's presented buffer, run the two
 			// compute passes — all BEFORE the scene render marches the density.
 			if (flubber) {
-				flubber.uploadWells();
+				// wellDriver.update() pushes the freshly-stepped wells into the sim
 				flubber.setSceneTexture(ping.read.texture);
 				flubber.update(fdt, t);
 			}

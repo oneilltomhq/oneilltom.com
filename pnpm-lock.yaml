@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@oneilltom/lib3':
-        specifier: 0.2.1
-        version: 0.2.1(three@0.184.0)
+        specifier: ^0.5.0
+        version: 0.5.0(three@0.184.0)
       three:
         specifier: ^0.184.0
         version: 0.184.0
@@ -180,8 +180,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@oneilltom/lib3@0.2.1':
-    resolution: {integrity: sha512-VqN5NShgMU38QM0mxRoDB0CrNadUl88U1G8LySs61nwMcWQeQIt60KRI1TvWbVVxK6czwlXShKeSYawx28pmaA==}
+  '@oneilltom/lib3@0.5.0':
+    resolution: {integrity: sha512-zP85rzS5XdWpQks+Ui6v8jF/R2c2cmafMHk5+rqNf5hDopXIE8CUzfHpmtDI4LF1OFyhSD/kaUVzLieejTa77w==}
     peerDependencies:
       three: '>=0.180.0'
 
@@ -512,7 +512,7 @@ snapshots:
   '@esbuild/win32-x64@0.27.7':
     optional: true
 
-  '@oneilltom/lib3@0.2.1(three@0.184.0)':
+  '@oneilltom/lib3@0.5.0(three@0.184.0)':
     dependencies:
       three: 0.184.0
 

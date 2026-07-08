@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
-// The metaball motion lives in a GPU compute sim now (src/flubber.js): particle
+// The metaball motion lives in a GPU compute sim now (@oneilltom/lib3/flubber
+// FlubberField): particle
 // positions in a storage buffer, integrated as pos += vel·dt with a governed
 // velocity — there is no position wrap, so the mod()-box-teleport 'glitch' this
 // test was born to catch cannot structurally recur. We still guard the sim
