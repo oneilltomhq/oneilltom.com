@@ -1,5 +1,5 @@
 import { HydraTSL } from './hydra-tsl.js';
-import { RaymarchedMetaballs } from '@oneilltom/lib3/metaballs';
+import { FlubberField } from './flubber.js';
 import {
 	Scene, PerspectiveCamera, InstancedMesh, Mesh, BoxGeometry, TetrahedronGeometry,
 	OctahedronGeometry, PlaneGeometry, MeshBasicNodeMaterial, DynamicDrawUsage,
@@ -319,41 +319,14 @@ async function main() {
 			return mesh;
 		});
 	
-		// ---- globules: raymarched metaballs fed by invisible bodies --------
-		// @oneilltom/lib3 RaymarchedMetaballs — same smooth-min SDF approach
-		// as the former inline shader, now a maintained module. Disable with
-		// ?globs=0.
+		// ---- globules: the metaball surface (GPU flubber field) ------------
+		// The shape lives in a GPU storage substrate now — particles in storage
+		// buffers, driven by the same roaming wells, splatted into a density
+		// texture and marched as one emergent isosurface (see src/flubber.js).
+		// No CPU sphere sources anymore. Constructed below, once the wells it
+		// reads are defined. Disable with ?globs=0.
 		const GLOBS = params.get('globs') !== '0';
-		let updateGlobules = () => {};
-		let blobs = [];
-		if (GLOBS) {
-		// blob bodies ride the same gravity-well physics but render as
-		// nothing — they are the SDF sources. Small separation radius lets
-		// them huddle so globules merge, stretch and split as the wells
-		// trade them.
-		const NBLOB = SWARM ? 12 : 22;
-		for (let i = 0; i < NBLOB; i++) {
-			// skewed size distribution: a crowd of droplets, a few heavies.
-			// floor lifted clear of `smoothing` so the small ones read as
-			// their own size instead of being swallowed by the merge; the
-			// gentler exponent + wider span pushes a few genuine giants out
-			const rr = 0.16 + Math.pow(Math.random(), 1.4) * 0.66;
-			bodies.push({
-				mesh: null, idx: 0, s: 1, r: Math.max(0.08, rr * 0.55), rr,
-				p: new Vector3((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 2.5,
-					(Math.random() - 0.5) * 2),
-				v: new Vector3(Math.random() - 0.5, Math.random() - 0.5,
-					Math.random() - 0.5).multiplyScalar(0.05),
-				q: new Quaternion(), w: new Vector3(),
-				pull: 0.9 + Math.random() * 0.4,
-				wf: 0.5 + Math.random() * 0.6,
-				ph: [Math.random(), Math.random(), Math.random()].map((x) => x * Math.PI * 2),
-				blob: true,
-			});
-		}
-		blobs = bodies.filter((b) => b.blob);
-		window.__blobs = blobs;
-		} // end blob sources
+		let flubber = null;
 	
 		const camera = new PerspectiveCamera(38, 1, 0.1, 50);
 		camera.position.z = 6;
@@ -454,25 +427,7 @@ async function main() {
 		resize();
 		addEventListener('resize', resize);
 	
-		if (GLOBS && blobs.length) {
-			const metaballs = new RaymarchedMetaballs({
-				camera,
-				sources: blobs,
-				sceneTexture: ping.read.texture,
-				rimTexture: displays[1].rt.texture,
-				smoothing: 0.22,
-				quadZ: 2.4,
-				refractionStrength: 0.22,
-				fresnelStrength: 0.95,
-				fresnelBase: 0.48,
-				rimStrength: 0.24,
-			});
-			scene.add(metaballs.mesh);
-			updateGlobules = () => {
-				metaballs.setSceneTexture(ping.read.texture);
-				metaballs.update();
-			};
-		}
+		// FlubberField is created below, once the wells it reads are defined.
 	
 		// ---- physics: three invisible gravity wells with spin --------------
 		// Force model adapted from three.js's webgpu_tsl_compute_attractors_
@@ -516,6 +471,21 @@ async function main() {
 			{ p: new Vector3(), axis: new Vector3(), ph: 4.2, ax: 1.3, ay: 0.6,
 				gm: 1.0, sm: 1.2, sp: 1.0, mood: 1 },   // the drifter: in between
 		];
+		// GPU metaball field: storage-buffer particles driven by these wells,
+		// splatted to a density texture, marched with the site-tuned glass
+		// (refraction samples the scene ping-pong, aspect-correct).
+		if (GLOBS) {
+			flubber = new FlubberField({
+				renderer: synth.renderer,
+				camera,
+				wells,
+				sceneTexture: ping.read.texture,
+				rimTexture: displays[1].rt.texture,
+			});
+			scene.add(flubber.mesh);
+			window.__flubber = flubber;
+		}
+
 		const dq = new Quaternion(), tmp = new Vector3(), tmp2 = new Vector3();
 	
 		const softWall = (b, axis, limit, dt) => {
@@ -630,23 +600,38 @@ async function main() {
 				b.w.y += (Math.random() - 0.5) * 2 * f;
 				b.w.z += (Math.random() - 0.5) * 2 * f;
 			}
+			// GPU field shockwave: kick particles out from where the ray
+			// crosses the blob's depth plane, under the cursor
+			if (flubber) {
+				const tz = Math.abs(rd.z) > 1e-3 ? (flubber.center.z - ro.z) / rd.z : 6;
+				const bp = ro.clone().addScaledVector(rd, Math.max(0.5, tz));
+				flubber.burst(bp, 1.8, 22);
+			}
 		});
 	
 		let last = 0;
 		const sim = { t: 0 }; // accumulated *stepped* time — test hook
 		const SUBSTEP = 1 / 60; // fixed-ish step: stable forces, bounded n² cost
 		const frame = (t) => {
-			let dt = Math.min(t - last, 1 / 20); // clamp: tab refocus, hitches
+			const fdt = Math.min(t - last, 1 / 20); // clamp: tab refocus, hitches
+			let dt = fdt;
 			last = t;
 			sim.t += dt;
 			// drift the default camera before stepping: downstream physics
-			// (frustum walls), the globule raymarcher and the render all see
-			// one consistent camera pose this frame. Inspect mode and reduced
+			// (frustum walls), the flubber field and the render all see one
+			// consistent camera pose this frame. Inspect mode and reduced
 			// motion keep their fixed poses.
 			if (!INSPECT && !reduced) applyDriftCamera(t);
 			while (dt > 0) { const h = Math.min(dt, SUBSTEP); step(h, t - dt + h); dt -= h; }
 			syncInstances();
-			updateGlobules();
+			// GPU metaball field: push the freshly-stepped wells to the sim,
+			// point refraction at last frame's presented buffer, run the two
+			// compute passes — all BEFORE the scene render marches the density.
+			if (flubber) {
+				flubber.uploadWells();
+				flubber.setSceneTexture(ping.read.texture);
+				flubber.update(fdt, t);
+			}
 			synth.update(t);
 			blitDisplays();
 			// scene → write (mirror faces sample read), present write, swap
@@ -667,7 +652,12 @@ async function main() {
 			backgrounds[name]();
 			document.querySelectorAll('.patch').forEach(
 				(el) => el.classList.toggle('on', el.dataset.p === name));
-			if (reduced) { for (let i = 0; i < 45; i++) synth.update(i / 10); frame(4.6); }
+			if (reduced) {
+				for (let i = 0; i < 45; i++) synth.update(i / 10);
+				// let the field settle from its seeded ball into a wells-shaped
+				// mass before the single presented frame
+				for (let i = 1; i <= 40; i++) frame(0.05 * i);
+			}
 		};
 		setBg(backgrounds[location.hash.slice(1)] ? location.hash.slice(1) : 'signal');
 		document.querySelectorAll('.patch').forEach((el) =>
