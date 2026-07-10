@@ -52,57 +52,41 @@ async function main() {
 		// patch buffers stay 960×540; the canvas itself renders at viewport size
 		const synth = new HydraTSL({ canvas, width: 960, height: 540, antialias: true, forceWebGL });
 		await synth.init();
-		const { osc, noise, voronoi, src, o0, o1, o2, o3 } = synth.api;
-	
-		// ---- background patches (o0) — muted, text-friendly ----------------
+		const { osc, noise, voronoi, warp, src, o0, o1, o2, o3 } = synth.api;
+
+		// ---- background patches (o0) — domain-warped fbm nebula ------------
+		// All five are the same look (the `warp` source: q→r→f domain-warp fbm,
+		// dark base, warm/cool mid, pink filaments gated right so the text side
+		// stays calm) and differ only by preset — scale / warm / cool / pink /
+		// seed / speed — exactly as the design system's per-page presets do.
+		// A faint self-feedback (src(o0)) keeps every patch a genuinely live
+		// feedback loop (the "Hydra → WGSL, live" claim) and adds organic drift
+		// without smearing at these tiny modulate amounts.
 		const backgrounds = {
+			// ink — cool, dim, minimal pink (calmest; near-monochrome nebula)
 			ink: () =>
-				noise(1.7, 0.06)
-					.modulate(src(o0).scale(1.012).rotate(0.004), 0.24)
-					.modulate(osc(3, 0.03, 0.2).rotate(0.35), 0.04)
-					.color(0.31, 0.36, 0.48)
-					.contrast(1.28)
-					.brightness(-0.09)
+				warp(3.0, 0.30, 0.74, 0.38, 21, 0.9)
+					.modulate(src(o0).scale(1.008).rotate(0.0014), 0.014)
 					.out(o0),
+			// silk — balanced warm/cool, soft filaments
 			silk: () =>
-				osc(4, 0.04, 0.8)
-					.modulate(noise(2.2, 0.06), 0.35)
-					.modulate(src(o0).scale(1.01).rotate(0.008), 0.16)
-					.color(0.44, 0.37, 0.58)
-					.saturate(0.65)
-					.contrast(1.32)
-					.brightness(-0.06)
+				warp(3.4, 0.36, 0.66, 0.52, 12, 1.0)
+					.modulate(src(o0).scale(1.006).rotate(0.0022), 0.018)
 					.out(o0),
+			// melt — warmer, larger slow-drifting blobs
 			melt: () =>
-				osc(8, 0.05, 0.9)
-					.rotate(0.4)
-					.modulate(noise(3.8, 0.07), 0.18)
-					.modulate(src(o0).scale(1.025).rotate(-0.006), 0.06)
-					.color(0.58, 0.5, 0.66)
-					.saturate(0.58)
-					.contrast(1.42)
-					.brightness(-0.23)
+				warp(2.6, 0.42, 0.60, 0.46, 33, 0.8)
+					.modulate(src(o0).scale(1.012).rotate(-0.0016), 0.02)
 					.out(o0),
+			// signal (default) — the reference landing preset, brighter pink
 			signal: () =>
-				osc(6.5, 0.07, 0.25)
-					.kaleid(5)
-					.modulate(noise(4.5, 0.08), 0.26)
-					.modulate(src(o0).scale(1.045).rotate(0.015), 0.14)
-					.color(0.62, 0.48, 0.74)
-					.saturate(0.64)
-					.contrast(1.36)
-					.brightness(-0.14)
+				warp(3.2, 0.34, 0.72, 0.60, 21, 1.0)
+					.modulate(src(o0).scale(1.01).rotate(0.0018), 0.016)
 					.out(o0),
-			// new transforms on show: voronoi cells, hue-cycled via colorama
+			// cells — tighter scale, filament-heavy, most pink
 			cells: () =>
-				voronoi(6, 0.28, 0.2)
-					.modulate(src(o0).scale(1.014).rotate(0.005), 0.16)
-					.modulate(noise(2.4, 0.05), 0.04)
-					.colorama(0.018)
-					.color(0.46, 0.4, 0.6)
-					.saturate(0.7)
-					.contrast(1.22)
-					.brightness(-0.12)
+				warp(4.2, 0.38, 0.64, 0.72, 47, 1.15)
+					.modulate(src(o0).scale(1.009).rotate(0.0026), 0.02)
 					.out(o0),
 		};
 	
