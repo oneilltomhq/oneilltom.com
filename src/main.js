@@ -12,6 +12,7 @@ import {
 import {
 	texture, screenUV, uv, normalLocal, instanceIndex, hash, select, uint,
 	vec2, vec3, clamp, mix, length, normalize, positionWorld, smoothstep,
+	uniform, screenCoordinate,
 } from 'three/tsl';
 
 async function main() {
@@ -245,9 +246,47 @@ async function main() {
 		});
 		const ping = { read: mkSceneRT(), write: mkSceneRT() };
 		const mirrorTex = texture(ping.read.texture, uv()); // .value re-pointed post-swap
+
+		// ---- display grade: one committed look on the way out --------------
+		// Lives ONLY on the present pass: the synth buffers and the scene
+		// feedback recursion sample ungraded signal, so this is a display
+		// transform, never part of the loop. Pivoted-power tone contrast
+		// (anchors shadows near true black instead of the floating gray),
+		// a cool-shadow / warm-highlight split tone (separates the single
+		// lavender wash into a deliberate palette that agrees with the page
+		// accent #ffd9fb), gentle vibrance, and interleaved-gradient-noise
+		// dither so the dark gradients don't band on 8-bit panels.
+		// Uniforms exposed on window.__grade for live tuning.
+		const grade = {
+			exposure: uniform(1.05),
+			contrast: uniform(1.32), // pivoted power: >1 steepens around pivot
+			pivot: uniform(0.11),
+			split: uniform(0.6),
+			sat: uniform(1.28),
+		};
+		const LUMA = vec3(0.2126, 0.7152, 0.0722);
+		const SHADOW_TINT = vec3(0.82, 0.93, 1.14); // cool blue shadows
+		const HIGH_TINT = vec3(1.14, 0.96, 1.04);   // warm pink highlights
+		const gradeNode = (c0) => {
+			let c = c0.rgb.mul(grade.exposure).max(0.0);
+			c = c.div(grade.pivot).pow(grade.contrast).mul(grade.pivot);
+			const y = c.dot(LUMA);
+			const shadows = smoothstep(0.02, 0.32, y).oneMinus().mul(grade.split);
+			const highs = smoothstep(0.22, 0.72, y).mul(grade.split);
+			c = c.mul(mix(vec3(1), SHADOW_TINT, shadows));
+			c = c.mul(mix(vec3(1), HIGH_TINT, highs));
+			c = mix(vec3(c.dot(LUMA)), c, grade.sat);
+			// IGN dither: ±0.5/255, breaks up quantization steps invisibly
+			const ign = screenCoordinate.x.mul(0.06711056)
+				.add(screenCoordinate.y.mul(0.00583715)).fract()
+				.mul(52.9829189).fract();
+			return c.add(ign.sub(0.5).mul(1 / 255));
+		};
+		window.__grade = grade;
+
 		const presentMat = new MeshBasicNodeMaterial();
 		const presentTex = texture(ping.read.texture, screenUV);
-		presentMat.colorNode = presentTex;
+		presentMat.colorNode = gradeNode(presentTex);
 		const presentQuad = new QuadMesh(presentMat);
 	
 		// tetra/octa faces wear the synth outputs — patch choice computed in
