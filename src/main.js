@@ -367,23 +367,56 @@ async function main() {
 			y: 0,
 		};
 		// ---- default camera: a slow, bounded drift (parallax, no path) ----
-		// The hard part of "move the camera in 3D" is the infinity of possible
-		// paths. Sidestep it: don't pick a path, keep the resting pose that
-		// already composes well (straight-on, text calm left, wells right,
-		// open front off-screen) and let the camera *breathe* around it on
-		// slow incommensurate sines — the same idiom the wells use to roam.
-		// Amplitudes are deliberately small: enough that the globules gain
-		// real parallax against the chamber walls, not so much that the front
-		// opening shows or the text side swings. lookAt(~0) keeps the gaze
-		// essentially down -Z (the current framing) with a faint sway.
+		// Same contract as before (breathe around the resting pose that
+		// composes well: text calm left, open front off-screen) but the
+		// breathing is now a general-relativistic orbit instead of stacked
+		// sines. The offset from camRest traces a Schwarzschild rosette —
+		// the Binet equation u'' = M/L² + 3Mu² − u from dynamics-notebook
+		// rung 17 — paced by physical time (dφ = L·u²·dt), so the drift
+		// inherits real orbital texture: long slow apoapsis glides, a
+		// quicker swing through perihelion, and a perihelion that creeps
+		// ~91° per lap so the path never retraces. The orbital plane is
+		// tilted and its node slowly regresses about world Y (the
+		// Lense-Thirring flavor), which turns the planar rosette into a
+		// gentle 3D tumble. Amplitudes stay inside the old sine envelope
+		// (~0.55 x/z, ~0.30 y): parallax without exposing the front wall.
 		const camRest = new Vector3(0, 0, 6);
 		const rollAxis = new Vector3(0, 0, 1); // camera local forward/back
 		const qRoll = new Quaternion();
+		// orbit constants (G = c = M = 1; radii in Schwarzschild M units).
+		// Perihelion 11M with L = 1.1·√(M·p) gives apoapsis ≈ 33.6M,
+		// e ≈ 0.51, precession ≈ 91°/orbit — measured numerically, the
+		// GR term makes all three deviate from their Newtonian reads.
+		const ORB_M = 1;
+		const ORB_L = 1.1 * Math.sqrt(ORB_M * 11 * 1.55); // ≈ 4.542
+		const ORB_TIME = 32;      // sim-units per real second → radial lap ≈ 23 s
+		const ORB_SCALE = 0.55 / 33.6; // apoapsis maps to the old max amplitude
+		const ORB_TILT = 1.0;     // plane inclination, rad (splits y vs z sway)
+		const ORB_NODAL = 0.0016; // node drift, rad per sim-unit (~2 min/rev)
+		const orb = { u: 1 / 11, du: 0, phi: 0, last: 0 };
+		const qNode = new Quaternion(), yAxis = new Vector3(0, 1, 0);
+		const xAxis = new Vector3(1, 0, 0);
+		const orbPos = new Vector3();
 		const applyDriftCamera = (t) => {
+			const dtSim = Math.min(Math.max(t - orb.last, 0), 0.1) * ORB_TIME;
+			orb.last = t;
+			// substep the Binet integration (dφ = L·u²·dt keeps Kepler pacing)
+			for (let rem = dtSim; rem > 0; rem -= 0.05) {
+				const h = Math.min(rem, 0.05);
+				const dphi = ORB_L * orb.u * orb.u * h;
+				orb.du += (ORB_M / (ORB_L * ORB_L) + 3 * ORB_M * orb.u * orb.u - orb.u) * dphi;
+				orb.u = clampNumber(orb.u + orb.du * dphi, 1 / 45, 1 / 8); // backstop only
+				orb.phi += dphi;
+			}
+			const r = ORB_SCALE / orb.u;
+			// rosette in the local plane → tilt → slow nodal precession
+			orbPos.set(r * Math.cos(orb.phi), r * Math.sin(orb.phi), 0);
+			qNode.setFromAxisAngle(yAxis, ORB_NODAL * t * ORB_TIME);
+			orbPos.applyAxisAngle(xAxis, ORB_TILT).applyQuaternion(qNode);
 			camera.position.set(
-				camRest.x + 0.50 * Math.sin(t * 0.069) + 0.17 * Math.sin(t * 0.016 + 1.0),
-				camRest.y + 0.30 * Math.sin(t * 0.052 + 1.3),
-				camRest.z + 0.40 * Math.sin(t * 0.031 + 0.6));
+				camRest.x + orbPos.x,
+				camRest.y + orbPos.y,
+				camRest.z + orbPos.z);
 			camera.lookAt(
 				0.10 * Math.sin(t * 0.043 + 2.1),
 				0.08 * Math.sin(t * 0.061 + 0.4),
