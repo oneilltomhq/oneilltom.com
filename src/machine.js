@@ -26,9 +26,13 @@ export function createMachine({
 
 	// ---- the few new tunables, addressed like everything else ------------
 	if (rack) {
+		// ranges are CONTRACTS, set by sweeping the extremes on screen:
+		// below cohesion 0.3 the mass sheds droplets into the text column;
+		// below damp ~0.45 the whip's fling smears sheets across the page.
+		// Anything scrubbable must be unable to break the piece.
 		if (noise) rack.add('/flubber/noise', bindUniform(noise.uniforms.uAmt), { min: 0, max: 2 });
-		if (cohesion) rack.add('/flubber/cohesion', bindUniform(cohesion.uniforms.uStr), { min: 0, max: 2 });
-		if (flubber) rack.add('/flubber/damp', bindUniform(flubber.u.uDamp), { min: 0.05, max: 2, unit: '/s' });
+		if (cohesion) rack.add('/flubber/cohesion', bindUniform(cohesion.uniforms.uStr), { min: 0.3, max: 2 });
+		if (flubber) rack.add('/flubber/damp', bindUniform(flubber.u.uDamp), { min: 0.45, max: 2, unit: '/s' });
 		if (orbit) rack.add('/eye/period', bindKey(orbit, 'period'), { min: 12, max: 90, unit: 's' });
 		if (grade) {
 			rack.add('/eye/exposure', bindUniform(grade.exposure), { min: 0.4, max: 2 });
