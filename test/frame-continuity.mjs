@@ -30,7 +30,11 @@ await page.waitForFunction('!!window.__flubber', { timeout: 5000 });
 await page.waitForTimeout(1000);
 
 const FRAMES = 200;
-const BUDGET = 3.4;      // SPEED_CAP + slack — keep in sync with flubber uSpeedCap
+const BUDGET = 9.5;      // max scheduled uSpeedCap + slack — the score's
+                         // outer-world glitches pierce the cap to 9.0 for
+                         // split-second windows at peak surge (keep in sync
+                         // with SCORE stage targets in src/main.js). A real
+                         // teleport still blows p50 into the hundreds.
 const ratios = [];
 let nanCount = 0, escapes = 0, samples = 0, zFlips = 0, prevDz = 0;
 let prev = null, prevT = null;
