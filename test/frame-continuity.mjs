@@ -45,8 +45,13 @@ for (let k = 0; k < FRAMES; k++) {
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())));
   const s = await page.evaluate(async () => {
     const f = window.__flubber;
+    // sample sim time at enqueue, NOT after the await: the buffer snapshot
+    // corresponds to the sim state now, while the readback itself takes many
+    // frames — reading t afterwards misaligns d and dt and inflates ratios
+    // whenever the particle rides the speed cap for sustained stretches
+    const t = window.__sim.t;
     const buf = await f.renderer.getArrayBufferAsync(f.pPos.value);
-    return { a: Array.from(new Float32Array(buf)), t: window.__sim.t };
+    return { a: Array.from(new Float32Array(buf)), t };
   });
   const a = s.a;
   // whole-buffer health: finite + not escaping the box by a wide margin. Stride
