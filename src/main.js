@@ -309,57 +309,38 @@ async function main() {
 			x: 0,
 			y: 0,
 		};
-		// ---- default camera: a slow, bounded drift (parallax, no path) ----
-		// Same contract as before (breathe around the resting pose that
-		// composes well: text calm left, open front off-screen) but the
-		// breathing is now a general-relativistic orbit instead of stacked
-		// sines. The offset from camRest traces a Schwarzschild rosette —
-		// the Binet equation u'' = M/L² + 3Mu² − u from dynamics-notebook
-		// rung 17 — paced by physical time (dφ = L·u²·dt), so the drift
-		// inherits real orbital texture: long slow apoapsis glides, a
-		// quicker swing through perihelion, and a perihelion that creeps
-		// ~91° per lap so the path never retraces. The orbital plane is
-		// tilted and its node slowly regresses about world Y (the
-		// Lense-Thirring flavor), which turns the planar rosette into a
-		// gentle 3D tumble. Amplitudes stay inside the old sine envelope
-		// (~0.55 x/z, ~0.30 y): parallax without exposing the front wall.
+		// ---- default camera: a slow, deliberate orbit ----------------------
+		// The GR rosette read as texture without travel — nobody could feel
+		// the path. Now the camera rides ONE legible ellipse around its
+		// resting pose: slightly eccentric (Kepler pacing — long glide out
+		// wide, a quicker swing through the near side), tilted off the flat
+		// so the sway has a vertical breath, the whole loop slowly
+		// precessing about Y so no two laps trace the same line. Amplitudes
+		// stay inside the drift envelope: the open room front never shows.
 		const camRest = new Vector3(0, 0, 6);
+		const ORBIT = {
+			period: 44,   // s per lap — drift, not a ride
+			a: 0.8,       // semi-major axis, world units
+			b: 0.42,      // semi-minor — the ellipse, not a circle
+			tilt: 0.5,    // off-flat inclination, rad
+			ecc: 0.3,     // pacing: faster near, slower far
+			nodal: 0.011, // loop precession about Y, rad/s (~9.5 min/rev)
+		};
 		const rollAxis = new Vector3(0, 0, 1); // camera local forward/back
-		const qRoll = new Quaternion();
-		// orbit constants (G = c = M = 1; radii in Schwarzschild M units).
-		// Perihelion 11M with L = 1.1·√(M·p) gives apoapsis ≈ 33.6M,
-		// e ≈ 0.51, precession ≈ 91°/orbit — measured numerically, the
-		// GR term makes all three deviate from their Newtonian reads.
-		const ORB_M = 1;
-		const ORB_L = 1.1 * Math.sqrt(ORB_M * 11 * 1.55); // ≈ 4.542
-		const ORB_TIME = 32;      // sim-units per real second → radial lap ≈ 23 s
-		const ORB_SCALE = 0.55 / 33.6; // apoapsis maps to the old max amplitude
-		const ORB_TILT = 1.0;     // plane inclination, rad (splits y vs z sway)
-		const ORB_NODAL = 0.0016; // node drift, rad per sim-unit (~2 min/rev)
-		const orb = { u: 1 / 11, du: 0, phi: 0, last: 0 };
-		const qNode = new Quaternion(), yAxis = new Vector3(0, 1, 0);
-		const xAxis = new Vector3(1, 0, 0);
-		const orbPos = new Vector3();
+		const qRoll = new Quaternion(), qNode = new Quaternion();
+		const yAxis = new Vector3(0, 1, 0), xAxis = new Vector3(1, 0, 0);
+		// the camera's live offset from rest — the circuitry overlay
+		// parallaxes its panes against this, so the readouts ride the same
+		// orbit the world does
+		const sway = new Vector3();
 		const applyDriftCamera = (t) => {
-			const dtSim = Math.min(Math.max(t - orb.last, 0), 0.1) * ORB_TIME;
-			orb.last = t;
-			// substep the Binet integration (dφ = L·u²·dt keeps Kepler pacing)
-			for (let rem = dtSim; rem > 0; rem -= 0.05) {
-				const h = Math.min(rem, 0.05);
-				const dphi = ORB_L * orb.u * orb.u * h;
-				orb.du += (ORB_M / (ORB_L * ORB_L) + 3 * ORB_M * orb.u * orb.u - orb.u) * dphi;
-				orb.u = clampNumber(orb.u + orb.du * dphi, 1 / 45, 1 / 8); // backstop only
-				orb.phi += dphi;
-			}
-			const r = ORB_SCALE / orb.u;
-			// rosette in the local plane → tilt → slow nodal precession
-			orbPos.set(r * Math.cos(orb.phi), r * Math.sin(orb.phi), 0);
-			qNode.setFromAxisAngle(yAxis, ORB_NODAL * t * ORB_TIME);
-			orbPos.applyAxisAngle(xAxis, ORB_TILT).applyQuaternion(qNode);
-			camera.position.set(
-				camRest.x + orbPos.x,
-				camRest.y + orbPos.y,
-				camRest.z + orbPos.z);
+			const m = (2 * Math.PI / ORBIT.period) * t;
+			const th = m + ORBIT.ecc * Math.sin(m); // equation-of-center pacing
+			sway.set(ORBIT.a * Math.cos(th), 0, ORBIT.b * Math.sin(th));
+			sway.applyAxisAngle(xAxis, ORBIT.tilt);
+			qNode.setFromAxisAngle(yAxis, ORBIT.nodal * t);
+			sway.applyQuaternion(qNode);
+			camera.position.copy(camRest).add(sway);
 			camera.lookAt(
 				0.10 * Math.sin(t * 0.043 + 2.1),
 				0.08 * Math.sin(t * 0.061 + 0.4),
@@ -530,7 +511,7 @@ async function main() {
 			presentQuad.render(synth.renderer);
 			const r = ping.read; ping.read = ping.write; ping.write = r;
 			// the circuitry overlay: DOM/SVG, outside the GPU loop entirely
-			circuit?.tick(t, { camera, wells });
+			circuit?.tick(t, { camera, wells, sway });
 		};
 		window.__wells = wells; window.__sim = sim;
 		window.__sling = sling; window.__graph = graph;

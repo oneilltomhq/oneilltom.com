@@ -23,15 +23,17 @@ const el = (tag, attrs = {}) => {
 };
 
 // the hand-authored spatial score: node id → normalized viewport position
-// (or a probe index), plus the voice's color. The text column (x < ~0.42)
-// is sacred; edges may cross the middle — that's where the mass lives.
+// (or a probe index), plus the voice's color (edges only — the text is one
+// faint white) and a parallax depth: nearer panes swing further against
+// the camera's orbit. The text column (x < ~0.42) is sacred; edges may
+// cross the middle — that's where the mass lives.
 const LAYOUT = {
-	anchor: { x: 0.565, y: 0.10, color: '#b8b8b4' },
-	stir: { x: 0.865, y: 0.14, color: '#ffd9fb' },
-	stretch: { x: 0.485, y: 0.80, color: '#b8b8b4' },
-	tension: { x: 0.655, y: 0.88, color: '#f2b75c' },
-	omega: { x: 0.835, y: 0.80, color: '#e4699b' },
-	skin: { x: 0.925, y: 0.52, color: '#8a8a86' },
+	anchor: { x: 0.565, y: 0.10, depth: 1.15, color: '#b8b8b4' },
+	stir: { x: 0.865, y: 0.14, depth: 0.7, color: '#ffd9fb' },
+	stretch: { x: 0.485, y: 0.80, depth: 1.0, color: '#b8b8b4' },
+	tension: { x: 0.655, y: 0.88, depth: 1.35, color: '#f2b75c' },
+	omega: { x: 0.835, y: 0.80, depth: 0.85, color: '#e4699b' },
+	skin: { x: 0.925, y: 0.52, depth: 0.6, color: '#8a8a86' },
 	'tip.a': { probe: 0, color: '#5ee8e0' },
 	'tip.b': { probe: 1, color: '#5ee8e0' },
 };
@@ -41,8 +43,9 @@ const STYLE = {
 	pad: 7,
 	baseOpacity: 0.55,
 	flareOpacity: 0.30, // added as tension/3 → 1
-	edgeBase: 0.2,
-	edgeActive: 0.55,
+	edgeBase: 0.42,
+	edgeActive: 0.45,
+	parallax: 20, // px of pane sway per world unit of camera sway, at depth 1
 };
 
 const CSS = `
@@ -53,25 +56,28 @@ const CSS = `
 	will-change: opacity;
 }
 #circuitry svg { width: 100%; height: 100%; display: block; }
-#circuitry text { font-family: ${STYLE.font}; fill: var(--c, #b8b8b4); }
-#circuitry .lbl { font-size: 10.5px; letter-spacing: 0.04em; }
-#circuitry .val { font-size: 10px; opacity: 0.92; }
-#circuitry .cap { font-size: 8px; opacity: 0.62; }
-#circuitry .knobrow { font-size: 9.5px; fill: #a8a8a2; }
-#circuitry .knobrow tspan.kv { fill: var(--c, #b8b8b4); }
-#circuitry .box {
-	fill: rgba(10,10,12,0.55);
-	stroke: var(--c, #b8b8b4);
-	stroke-opacity: 0.4;
-	stroke-width: 1;
-	rx: 4;
+/* one faint white voice for every readout — no chrome; a thin dark halo
+   (paint-order stroke) keeps the glyphs legible over the bright synth
+   without giving the panes a background */
+#circuitry text {
+	font-family: ${STYLE.font}; fill: #dcdce0;
+	paint-order: stroke; stroke: rgba(6,6,9,0.55);
+	stroke-width: 2px; stroke-linejoin: round;
 }
-#circuitry .edge { stroke: var(--c, #b8b8b4); fill: none; stroke-width: 1; }
+#circuitry .lbl { font-size: 10.5px; letter-spacing: 0.04em; }
+#circuitry .val { font-size: 10px; opacity: 0.85; }
+#circuitry .cap { font-size: 8px; opacity: 0.55; }
+#circuitry .knobrow { font-size: 9.5px; opacity: 0.75; }
+#circuitry .knobrow tspan.kv { fill: #f2f2f5; }
+#circuitry .box { fill: none; stroke: none; rx: 4; }
+#circuitry .edge { stroke: var(--c, #b8b8b4); fill: none; stroke-width: 1.2; }
 /* ---- artist mode: the résumé steps back, the rows scrub ---- */
 body.artist { user-select: none; }
 body.artist main { opacity: 0.18; transition: opacity 0.15s ease; }
 body.artist main:hover { opacity: 0.8; }
 body.artist #scrim { opacity: 0.35; }
+/* tuning wants targets: the boxes come back, faintly, in artist mode only */
+body.artist #circuitry .box { fill: rgba(10,10,12,0.5); stroke: rgba(220,220,224,0.28); stroke-width: 1; }
 body.artist #circuitry .knobrow { opacity: 1; pointer-events: all; cursor: ns-resize; }
 body.artist #circuitry .knobrow:hover, #circuitry .knobrow.live { fill: #ffd9fb; }
 `;
@@ -198,8 +204,10 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 		W = innerWidth; H = innerHeight;
 		for (const b of boxes.values()) {
 			if (b.probe !== undefined) continue;
-			b.cx = b.lay.x * W;
-			b.cy = b.lay.y * H;
+			b.bx = b.lay.x * W; // resting pose — tick sways around it
+			b.by = b.lay.y * H;
+			b.cx = b.bx;
+			b.cy = b.by;
 			placeBox(b);
 		}
 		for (const e of edges) placeEdge(e);
@@ -276,9 +284,27 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 			wrap.style.opacity = op.toFixed(2);
 			lastOpacity = op;
 		}
+		let moved = false;
+		// the fixed panes hang in the same space the camera glides through:
+		// each parallaxes against the orbital sway, nearer panes (bigger
+		// depth) swinging further. The tips need none of this — they ride
+		// the projection itself.
+		if (view?.sway) {
+			const px = -view.sway.x * STYLE.parallax;
+			const py = view.sway.y * STYLE.parallax;
+			for (const b of boxes.values()) {
+				if (b.probe !== undefined) continue;
+				const d = b.lay.depth ?? 1;
+				const nx = b.bx + px * d, ny = b.by + py * d;
+				if (Math.abs(nx - b.cx) + Math.abs(ny - b.cy) > 0.25) {
+					b.cx = nx; b.cy = ny;
+					placeBox(b);
+					moved = true;
+				}
+			}
+		}
 		// the tip probes chase the projected wells every frame (2 transforms)
 		if (view?.camera && view?.wells) {
-			let moved = false;
 			for (const b of boxes.values()) {
 				if (b.probe === undefined) continue;
 				probeV.copy(view.wells[b.probe].p).project(view.camera);
@@ -295,10 +321,8 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 					moved = true;
 				}
 			}
-			if (moved) for (const e of edges) {
-				if (e.from.probe !== undefined || e.to.probe !== undefined) placeEdge(e);
-			}
 		}
+		if (moved) for (const e of edges) placeEdge(e);
 		// the 10Hz pass: values, knob rows, edge activity
 		if (t - lastTick < 0.1) return;
 		lastTick = t;
