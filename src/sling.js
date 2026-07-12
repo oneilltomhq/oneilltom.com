@@ -22,7 +22,7 @@ export function createSling({ wells, noise, rack }) {
 		stiff: 5.0,  // band stiffness (whip snap)
 		spin: 1.8,   // stir strength (energy in)
 		rate: 1.2,   // stir tempo, rad/s — the whirl locks to it
-		squash: 0.7, // stir ellipse: 0 = round (calm circle) → 1 = a flat
+		squash: 1.0, // stir ellipse: 0 = round (calm circle) → 1 = a flat
 		             // shake (the orbit is forced eccentric and WHIPS)
 		drag: 0.4,   // per-second bleed (energy out)
 		grav: 1.0,   // the tips' pull on the particle mass (scales gm)
@@ -150,9 +150,11 @@ export function createSling({ wells, noise, rack }) {
 		}
 		A.addScaledVector(vel[0], dt);
 		B.addScaledVector(vel[1], dt);
-		// the whirl, measured off the tips (never assumed): |û × vrel| / dist
+		// the whirl, measured off the tips (never assumed): |û × vrel| / r.
+		// The radius is floored: at full squash the tips pass through each
+		// other, and angular rate at zero radius is not a number worth showing
 		vrel.subVectors(vel[1], vel[0]);
-		nOmega.set(lcross.crossVectors(u, vrel).length() / dist);
+		nOmega.set(lcross.crossVectors(u, vrel).length() / Math.max(dist, 0.15));
 		// the tips are the wells: pull scaled live, swirl axes on the plane
 		for (let i = 0; i < 2; i++) {
 			wells[i].gm = GM[i] * P.grav;
