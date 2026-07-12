@@ -43,7 +43,11 @@
 			display: flex; flex-direction: column; justify-content: center;
 			padding: 6rem clamp(1.25rem, 6vw, 6rem) 9rem;
 			max-width: 60rem;
+			/* the text floats above the circuitry, but its boxes must not
+			   swallow the clicks meant for it — only the links are targets */
+			pointer-events: none;
 		}
+		main a { pointer-events: auto; }
 		h1 {
 			margin: 0 0 1.4rem;
 			font-family: 'EB Garamond', Georgia, serif;

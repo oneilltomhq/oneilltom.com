@@ -12,10 +12,10 @@
 // headlessly (tmp/ harnesses) — the code that runs the site is the code
 // the tests pin.
 import { Vector3 } from 'three/webgpu';
-import { bindKey, bindUniform } from '@oneilltom/lib3/rack';
+import { bindKey } from '@oneilltom/lib3/rack';
 import { createGraph } from './graph.js';
 
-export function createSling({ wells, noise, rack }) {
+export function createSling({ wells, rack }) {
 	// the few chosen parameters — everything else is committed
 	const P = {
 		rest: 0.6,   // band slack length (orbit scale)
@@ -68,13 +68,6 @@ export function createSling({ wells, noise, rack }) {
 		label: 'tip B', caption: 'the light end — it does the whipping',
 		inputs: [{ from: 'anchor' }, { from: 'stir' }, { from: 'tension' }],
 	});
-	if (noise) {
-		graph.tap('skin', {
-			label: 'skin', caption: 'turbulent life on the surface of the mass',
-			min: 0, max: 2, knobs: ['/flubber/noise'], init: 0.4,
-		});
-	}
-
 	if (rack) {
 		rack.add('/sling/rest', bindKey(P, 'rest'), { min: 0.2, max: 1.4, unit: 'u' });
 		rack.add('/sling/stiff', bindKey(P, 'stiff'), { min: 0.5, max: 10 });
@@ -83,7 +76,6 @@ export function createSling({ wells, noise, rack }) {
 		rack.add('/sling/squash', bindKey(P, 'squash'), { min: 0, max: 1 });
 		rack.add('/sling/drag', bindKey(P, 'drag'), { min: 0.05, max: 2, unit: '/s' });
 		rack.add('/sling/grav', bindKey(P, 'grav'), { min: 0, max: 3 });
-		if (noise) rack.add('/flubber/noise', bindUniform(noise.uniforms.uAmt), { min: 0, max: 2 });
 	}
 
 	const A = wells[0].p, B = wells[1].p;
@@ -161,7 +153,6 @@ export function createSling({ wells, noise, rack }) {
 			wells[i].sm = SM[i];
 			wells[i].axis.copy(n);
 		}
-		if (noise) graph.get('skin').set(noise.uniforms.uAmt.value);
 	};
 
 	return { P, graph, step };

@@ -4,6 +4,7 @@ import {
 } from '@oneilltom/lib3/flubber';
 import { Rack } from '@oneilltom/lib3/rack';
 import { createSling } from './sling.js';
+import { createMachine } from './machine.js';
 import {
 	Scene, PerspectiveCamera, Mesh, PlaneGeometry, MeshBasicNodeMaterial,
 	Vector2, Vector3, Quaternion, Raycaster,
@@ -361,7 +362,7 @@ async function main() {
 		if (INSPECT) {
 			applyInspectCamera();
 			addEventListener('pointerdown', (ev) => {
-				if (ev.target.closest('a, .patch, #circuitry .knobrow')) return;
+				if (ev.target.closest('a, .patch, #circuitry .knobrow, #circuitry .hub, #circuitry .crumb')) return;
 				ev.preventDefault();
 				inspectState.dragging = true;
 				inspectState.dragged = false;
@@ -451,16 +452,29 @@ async function main() {
 		window.__rack = rack;
 
 		// ---- the sling (src/sling.js): the perpetual mechanism --------------
-		const sling = createSling({ wells, noise: flubNoise, rack });
+		const sling = createSling({ wells, rack });
 		const { graph } = sling;
 		const slingStep = sling.step;
+
+		// ---- the machine (src/machine.js): the WHOLE circuit, ≤7 organs -----
+		// The complete picture the overlay draws: hand → sling → mass,
+		// synth → chamber → echo → eye, with the echo feeding back into the
+		// glass one frame late. Each organ opens into its real interior.
+		const machine = createMachine({
+			sling, wells, flubber,
+			noise: flubNoise, cohesion: flubCohesion, burst: flubberBurst,
+			grade, orbit: ORBIT,
+			echoSize: () => ({ w: ping.read.width, h: ping.read.height }),
+			rack,
+		});
+		window.__machine = machine;
 
 		// click/tap: a shockwave where the pointer ray crosses the blob's
 		// depth plane — the mass scatters, cohesion gathers it back up
 		const raycaster = new Raycaster(), pointer = new Vector2();
 		addEventListener('pointerdown', (ev) => {
-			// artist-mode scrubs must not fire the burst shockwave
-			if (INSPECT || ev.target.closest('a, .patch, #circuitry .knobrow')) return;
+			// artist scrubs and circuit drilling must not fire the shockwave
+			if (INSPECT || ev.target.closest('a, .patch, #circuitry .knobrow, #circuitry .hub, #circuitry .crumb')) return;
 			if (!flubberBurst) return;
 			pointer.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
 			raycaster.setFromCamera(pointer, camera);
@@ -468,6 +482,7 @@ async function main() {
 			const tz = Math.abs(rd.z) > 1e-3 ? (flubber.center.z - ro.z) / rd.z : 6;
 			const bp = ro.clone().addScaledVector(rd, Math.max(0.5, tz));
 			flubberBurst.trigger(bp, 1.8, 22);
+			machine.note('burst');
 		});
 
 		let circuit = null; // the circuitry overlay (created below, post-reduced check)
@@ -521,11 +536,12 @@ async function main() {
 		if (params.get('circuit') !== '0' && matchMedia('(min-width: 720px)').matches) {
 			const { createCircuitOverlay } = await import('./circuit-overlay.js');
 			circuit = createCircuitOverlay({
-				graph, rack, artist: params.get('artist') === '1',
+				machine, rack, artist: params.get('artist') === '1',
 			});
 		}
 		const setBg = (name) => {
 			backgrounds[name]();
+			machine.note('patch', name);
 			document.querySelectorAll('.patch').forEach(
 				(el) => el.classList.toggle('on', el.dataset.p === name));
 			if (reduced) {

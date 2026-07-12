@@ -1,18 +1,19 @@
 // ---- the circuitry overlay: the artwork exposing its own frame circuit ---
-// A dim SVG rendering of the sling's live signal graph (src/graph.js),
-// drawn WITH the art, not on it: it sits between the canvas and the scrim
-// (the scrim's left-heavy gradient dims it over the text column for free)
-// and its opacity flares with the band tension — the circuit lights up
-// when the sling whips. The two tip nodes are probes pinned to the
-// projected screen positions of the actual wells: the math visibly
-// tethered to the mass it drives.
+// Renders ONE level of the machine graph (src/machine.js) at a time: the
+// seven-organ top level by default, and any container's interior on click
+// (the ◂ crumb or Escape goes back up). Drawn WITH the art, not on it —
+// between the canvas and the scrim — and its opacity flares with the
+// sling's band tension.
 //
-// The knobs live INSIDE the box of the node they tune (a `knobs` row is
-// part of the node, not a satellite): in artist mode (?artist=1 or
-// Ctrl+Alt+A) every row scrubs — drag up/down, shift for fine.
+// Coherence law learned the hard way: a diagram is legible through STABLE
+// RELATIVE POSITIONS. So each level is a fixed authored formation, and all
+// the motion is spent where meaning is: the whole formation drifts as one
+// organism (tethered to the mass's projected midpoint), probe nodes ride
+// the projection itself, values animate, and every edge carries a slow
+// directed dash flow — the signal visibly runs from cause to effect.
 //
-// Build once (createElementNS + one getBBox pass), then only textContent /
-// stroke-opacity / ≤2 transforms per frame — no layout thrash.
+// Knobs stay folded INTO the box of the node they tune; in artist mode
+// (?artist=1 or Ctrl+Alt+A) every row scrubs — drag, shift for fine.
 import { Vector3 } from 'three/webgpu';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -20,25 +21,6 @@ const el = (tag, attrs = {}) => {
 	const e = document.createElementNS(NS, tag);
 	for (const k in attrs) e.setAttribute(k, attrs[k]);
 	return e;
-};
-
-// the swarm score: the readout panes are not pinned to the viewport —
-// they CIRCLE the mass. Each fixed node rides its own slow ellipse around
-// the pair's smoothed screen midpoint: one shared direction, staggered
-// phases, breathing radii — swarm framing with sentinel energy, never
-// static, never settled. Per node: r = orbit radius (fraction of viewport
-// height), w = angular rate (rad/s; the close-in panes circle faster,
-// Kepler-fashion), ph = phase. Color feeds the edges only — the text is
-// one faint white. The text column (x < ~0.42) stays sacred via clamp.
-const LAYOUT = {
-	anchor: { r: 0.30, w: 0.10, ph: 0.0, color: '#b8b8b4' },
-	stir: { r: 0.37, w: 0.085, ph: 1.05, color: '#ffd9fb' },
-	stretch: { r: 0.25, w: 0.13, ph: 2.2, color: '#b8b8b4' },
-	tension: { r: 0.21, w: 0.16, ph: 3.3, color: '#f2b75c' },
-	omega: { r: 0.29, w: 0.115, ph: 4.4, color: '#e4699b' },
-	skin: { r: 0.36, w: 0.07, ph: 5.4, color: '#8a8a86' },
-	'tip.a': { probe: 0, color: '#5ee8e0' },
-	'tip.b': { probe: 1, color: '#5ee8e0' },
 };
 
 const STYLE = {
@@ -50,12 +32,12 @@ const STYLE = {
 	edgeActive: 0.45,
 };
 
-// the circling itself: screen ellipse shape + the slow radius breath
-const SWARM = {
-	ecc: 1.25,     // x stretch of each orbit (screens are wide)
-	squish: 0.62,  // y squash — circling reads as a ring seen at an angle
-	breathe: 0.15, // ± radius modulation: closing in, drifting off
-	focalLag: 1.2, // /s — the swarm frames the mass, it doesn't twitch with it
+// the one-organism drift: how far the formation strays from its authored
+// pose, and how hard it leans toward the mass's projected midpoint
+const PLATE = {
+	chase: 0.10,  // fraction of the focal's offset the plate follows
+	swayX: 16, swayY: 12, // px of slow lissajous wander
+	focalLag: 1.2, // /s — frames the mass, doesn't twitch with it
 };
 
 const CSS = `
@@ -67,8 +49,7 @@ const CSS = `
 }
 #circuitry svg { width: 100%; height: 100%; display: block; }
 /* one faint white voice for every readout — no chrome; a thin dark halo
-   (paint-order stroke) keeps the glyphs legible over the bright synth
-   without giving the panes a background */
+   (paint-order stroke) keeps the glyphs legible over the bright synth */
 #circuitry text {
 	font-family: ${STYLE.font}; fill: #dcdce0;
 	paint-order: stroke; stroke: rgba(6,6,9,0.55);
@@ -80,7 +61,20 @@ const CSS = `
 #circuitry .knobrow { font-size: 9.5px; opacity: 0.75; }
 #circuitry .knobrow tspan.kv { fill: #f2f2f5; }
 #circuitry .box { fill: none; stroke: none; rx: 4; }
-#circuitry .edge { stroke: var(--c, #b8b8b4); fill: none; stroke-width: 1.2; }
+/* containers open on click — they get a hit target even for plain viewers */
+#circuitry .hub .box { pointer-events: all; cursor: pointer; }
+#circuitry .crumb { font-size: 10.5px; opacity: 0.7; pointer-events: all; cursor: pointer; }
+#circuitry .crumb:hover { opacity: 1; }
+/* the signal visibly flows from cause to effect — the dash offset is
+   stepped from the 10Hz pass (a CSS animation here would invalidate every
+   edge every frame and the whole overlay gets expensive) */
+#circuitry .edge {
+	stroke: var(--c, #b8b8b4); fill: none; stroke-width: 1.2;
+	stroke-dasharray: 1 11; stroke-linecap: round;
+}
+@media (prefers-reduced-motion: reduce) {
+	#circuitry .edge { stroke-dasharray: none; }
+}
 /* ---- artist mode: the résumé steps back, the rows scrub ---- */
 body.artist { user-select: none; }
 body.artist main { opacity: 0.18; transition: opacity 0.15s ease; }
@@ -94,7 +88,7 @@ body.artist #circuitry .knobrow:hover, #circuitry .knobrow.live { fill: #ffd9fb;
 
 const fmtNum = (v) => (v >= 0 ? ' ' : '') + v.toFixed(2);
 
-export function createCircuitOverlay({ graph, rack, artist = false }) {
+export function createCircuitOverlay({ machine, rack, artist = false }) {
 	const wrap = document.createElement('div');
 	wrap.id = 'circuitry';
 	wrap.setAttribute('aria-hidden', 'true');
@@ -105,87 +99,106 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 	wrap.appendChild(svg);
 	const edgeLayer = el('g');
 	const nodeLayer = el('g');
+	const chromeLayer = el('g'); // the ◂ crumb
 	svg.appendChild(edgeLayer);
 	svg.appendChild(nodeLayer);
+	svg.appendChild(chromeLayer);
 	// insert under the scrim: canvas < circuitry < scrim < text
 	const scrim = document.getElementById('scrim');
 	scrim.parentNode.insertBefore(wrap, scrim);
 
 	let W = innerWidth, H = innerHeight;
 	const rackMeta = new Map((rack?.params() ?? []).map((p) => [p.path, p]));
-	const boxes = new Map(); // id → box record
-	const edges = [];        // { from, to, line }
+	let boxes = new Map(); // id → box record (rebuilt per level)
+	let edges = [];        // { from, to, line } (rebuilt per level)
+	let levelId = machine.top;
+	const focal = { x: null, y: null }; // smoothed projected mass midpoint
 
-	// -- build --------------------------------------------------------------
-	for (const n of graph.nodes()) {
-		const lay = LAYOUT[n.id];
-		if (!lay) continue;
-		const g = el('g', { class: 'node' });
-		g.style.setProperty('--c', lay.color);
-		const rect = el('rect', { class: 'box' });
-		g.appendChild(rect);
-		const lbl = el('text', { class: 'lbl', x: 0, y: 0 });
-		lbl.textContent = n.label;
-		const val = el('text', { class: 'val', x: 0, y: 13 });
-		g.appendChild(lbl);
-		g.appendChild(val);
-		let rowY = 13;
-		if (n.caption && lay.probe === undefined) {
-			// wrap the plain-words caption to short lines — boxes stay narrow
-			const lines = [];
-			let line = '';
-			for (const w of n.caption.split(' ')) {
-				if (line && (line + ' ' + w).length > 26) { lines.push(line); line = w; }
-				else line = line ? `${line} ${w}` : w;
+	// -- build one level ------------------------------------------------------
+	const crumb = el('text', { class: 'crumb', x: 0, y: 0 });
+	chromeLayer.appendChild(crumb);
+	const build = (id) => {
+		levelId = id;
+		const level = machine.levels[id];
+		edgeLayer.textContent = '';
+		nodeLayer.textContent = '';
+		boxes = new Map();
+		edges = [];
+		for (const n of level.graph.nodes()) {
+			const lay = level.layout[n.id];
+			if (!lay) continue;
+			const enterable = lay.enter && machine.levels[lay.enter];
+			const g = el('g', { class: enterable ? 'node hub' : 'node' });
+			g.style.setProperty('--c', lay.color);
+			if (enterable) g.dataset.enter = lay.enter;
+			g.dataset.id = n.id;
+			const rect = el('rect', { class: 'box' });
+			g.appendChild(rect);
+			const lbl = el('text', { class: 'lbl', x: 0, y: 0 });
+			lbl.textContent = n.label + (enterable ? ' ▸' : '');
+			const val = el('text', { class: 'val', x: 0, y: 13 });
+			g.appendChild(lbl);
+			g.appendChild(val);
+			let rowY = 13;
+			if (n.caption && lay.probe === undefined) {
+				// wrap the plain-words caption to short lines — boxes stay narrow
+				const lines = [];
+				let line = '';
+				for (const w of n.caption.split(' ')) {
+					if (line && (line + ' ' + w).length > 26) { lines.push(line); line = w; }
+					else line = line ? `${line} ${w}` : w;
+				}
+				if (line) lines.push(line);
+				for (const s of lines.slice(0, 3)) {
+					rowY += 10;
+					const cap = el('text', { class: 'cap', x: 0, y: rowY });
+					cap.textContent = s;
+					g.appendChild(cap);
+				}
+				rowY += 2;
 			}
-			if (line) lines.push(line);
-			for (const s of lines.slice(0, 3)) {
-				rowY += 10;
-				const cap = el('text', { class: 'cap', x: 0, y: rowY });
-				cap.textContent = s;
-				g.appendChild(cap);
+			// the knobs of this node, folded into its box — every one scrubs
+			const knobEls = [];
+			for (const path of n.knobs ?? []) {
+				rowY += 12;
+				const row = el('text', { class: 'knobrow', x: 0, y: rowY });
+				row.dataset.path = path;
+				const name = document.createElementNS(NS, 'tspan');
+				name.textContent = path.split('/').pop() + ' ';
+				const kv = el('tspan', { class: 'kv' });
+				row.appendChild(name);
+				row.appendChild(kv);
+				g.appendChild(row);
+				knobEls.push({ path, kv, last: '' });
 			}
-			rowY += 2;
+			nodeLayer.appendChild(g);
+			const bb = g.getBBox(); // one measure pass per build, then never again
+			const b = {
+				node: level.graph.get(n.id), lay, g, rect, valEl: val, lastVal: '',
+				knobEls, probe: lay.probe,
+				w: Math.max(bb.width, 46) + STYLE.pad * 2,
+				h: rowY + 10 + STYLE.pad * 2,
+				cx: 0, cy: 0, sx: null, sy: null,
+			};
+			rect.setAttribute('x', -STYLE.pad);
+			rect.setAttribute('y', -10.5 - STYLE.pad + 2);
+			rect.setAttribute('width', b.w);
+			rect.setAttribute('height', b.h);
+			boxes.set(n.id, b);
 		}
-		// the knobs of this node, folded into its box — every one scrubs
-		const knobEls = [];
-		for (const path of n.knobs ?? []) {
-			rowY += 12;
-			const row = el('text', { class: 'knobrow', x: 0, y: rowY });
-			row.dataset.path = path;
-			const name = document.createElementNS(NS, 'tspan');
-			name.textContent = path.split('/').pop() + ' ';
-			const kv = el('tspan', { class: 'kv' });
-			row.appendChild(name);
-			row.appendChild(kv);
-			g.appendChild(row);
-			knobEls.push({ path, kv, last: '' });
+		for (const [, b] of boxes) {
+			for (const inp of b.node.inputs ?? []) {
+				const from = boxes.get(inp.from);
+				if (!from) continue;
+				const line = el('line', { class: 'edge', 'stroke-opacity': STYLE.edgeBase });
+				line.style.setProperty('--c', from.lay.color);
+				edgeLayer.appendChild(line);
+				edges.push({ from, to: b, line, lastQ: -1 });
+			}
 		}
-		nodeLayer.appendChild(g);
-		const bb = g.getBBox(); // one measure pass, then never again
-		const b = {
-			node: graph.get(n.id), lay, g, rect, valEl: val, lastVal: '',
-			knobEls, probe: lay.probe,
-			w: Math.max(bb.width, 46) + STYLE.pad * 2,
-			h: rowY + 10 + STYLE.pad * 2,
-			cx: 0, cy: 0, sx: null, sy: null,
-		};
-		rect.setAttribute('x', -STYLE.pad);
-		rect.setAttribute('y', -10.5 - STYLE.pad + 2);
-		rect.setAttribute('width', b.w);
-		rect.setAttribute('height', b.h);
-		boxes.set(n.id, b);
-	}
-	for (const [, b] of boxes) {
-		for (const inp of b.node.inputs ?? []) {
-			const from = boxes.get(inp.from);
-			if (!from) continue;
-			const line = el('line', { class: 'edge', 'stroke-opacity': STYLE.edgeBase });
-			line.style.setProperty('--c', from.lay.color);
-			edgeLayer.appendChild(line);
-			edges.push({ from, to: b, line, lastQ: -1 });
-		}
-	}
+		crumb.textContent = level.parent ? `◂ ${machine.levels[level.parent].title}` : '';
+		layoutAll();
+	};
 
 	// -- geometry -------------------------------------------------------------
 	// anchor an edge on the box border along the line between centres
@@ -198,8 +211,12 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 	const placeEdge = (e) => {
 		const dx = e.to.cx - e.from.cx, dy = e.to.cy - e.from.cy;
 		const len = Math.hypot(dx, dy) || 1;
-		const [x1, y1] = anchorPt(e.from, dx / len, dy / len);
-		const [x2, y2] = anchorPt(e.to, -dx / len, -dy / len);
+		let [x1, y1] = anchorPt(e.from, dx / len, dy / len);
+		let [x2, y2] = anchorPt(e.to, -dx / len, -dy / len);
+		// a small consistent sidestep, so an A→B and B→A pair (the echo
+		// loop) rides parallel rails instead of one smeared line
+		const ox = -dy / len * 4, oy = dx / len * 4;
+		x1 += ox; y1 += oy; x2 += ox; y2 += oy;
 		e.line.setAttribute('x1', x1); e.line.setAttribute('y1', y1);
 		e.line.setAttribute('x2', x2); e.line.setAttribute('y2', y2);
 	};
@@ -210,64 +227,23 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 		const oy = b.cy - b.h / 2 + 10.5 + STYLE.pad - 2;
 		b.g.setAttribute('transform', `translate(${ox},${oy})`);
 	};
-	// where the swarm looks when it hasn't seen the mass yet
-	const focal = { x: null, y: null };
-	// boids separation: when two panes' rects (plus a margin) overlap in
-	// the normalized ellipse metric, push them apart along the offset —
-	// mutual between panes, one-sided against the pinned tip probes
-	const shove = (p, q, mutual) => {
-		const sx = (p.b.w + q.b.w) / 2 + 14, sy = (p.b.h + q.b.h) / 2 + 10;
-		const dx = q.x - p.x, dy = q.y - p.y;
-		const ox = dx / sx, oy = dy / sy;
-		const d2 = ox * ox + oy * oy;
-		if (d2 >= 1) return;
-		if (d2 < 1e-6) { p.y -= sy * 0.5; return; } // dead-centred: just duck
-		const d = Math.sqrt(d2);
-		const f = (1 - d) / d * (mutual ? 0.5 : 1);
-		p.x -= dx * f; p.y -= dy * f;
-		if (mutual) { q.x += dx * f; q.y += dy * f; }
-	};
-	// the whole swarm, at time t, circling (fx, fy):
-	// orbit attractor → separation → clamp → commit
-	const pack = [];
-	const placeSwarm = (t, fx, fy) => {
-		pack.length = 0;
+	// the formation, drifting as one organism around its authored pose
+	const placeFormation = (t) => {
+		const dx = (focal.x === null ? 0 : (focal.x - 0.70 * W) * PLATE.chase)
+			+ PLATE.swayX * (Math.sin(0.047 * t + 1.3) + 0.6 * Math.sin(0.013 * t));
+		const dy = (focal.y === null ? 0 : (focal.y - 0.48 * H) * PLATE.chase)
+			+ PLATE.swayY * (Math.sin(0.061 * t) + 0.6 * Math.sin(0.017 * t + 0.7));
+		let moved = false;
 		for (const b of boxes.values()) {
 			if (b.probe !== undefined) continue;
-			const th = b.lay.ph + b.lay.w * t;
-			const br = b.lay.r * H
-				* (1 + SWARM.breathe * Math.sin(0.037 * t + b.lay.ph * 2));
-			pack.push({
-				b,
-				x: fx + Math.cos(th) * br * SWARM.ecc,
-				y: fy + Math.sin(th) * br * SWARM.squish,
-			});
-		}
-		// clamp INSIDE the relaxation: two panes shoved to the same boundary
-		// must separate again along it, or they re-stack at the clamp
-		for (let it = 0; it < 3; it++) {
-			for (const p of pack) {
-				// half-extent-aware: the text column stays sacred even for a
-				// wide pane, and nothing slides off the viewport
-				p.x = Math.min(Math.max(p.x, 0.445 * W + p.b.w / 2), 0.985 * W - p.b.w / 2);
-				p.y = Math.min(Math.max(p.y, 0.03 * H + p.b.h / 2), 0.97 * H - p.b.h / 2);
-			}
-			for (let i = 0; i < pack.length; i++) {
-				for (let j = i + 1; j < pack.length; j++) shove(pack[i], pack[j], true);
-				for (const b of boxes.values()) {
-					if (b.probe === undefined || b.sx === null) continue;
-					shove(pack[i], { b, x: b.cx, y: b.cy }, false);
-				}
-			}
-		}
-		let moved = false;
-		for (const p of pack) {
-			const b = p.b;
-			const nx = Math.min(Math.max(p.x, 0.445 * W + b.w / 2), 0.985 * W - b.w / 2);
-			const ny = Math.min(Math.max(p.y, 0.03 * H + b.h / 2), 0.97 * H - b.h / 2);
+			// half-extent-aware clamps: the text column stays sacred even for
+			// a wide pane, and nothing slides off the viewport
+			const nx = Math.min(Math.max(b.lay.x * W + dx, 0.445 * W + b.w / 2), 0.99 * W - b.w / 2);
+			const ny = Math.min(Math.max(b.lay.y * H + dy, 0.03 * H + b.h / 2), 0.97 * H - b.h / 2);
 			if (Math.abs(nx - b.cx) + Math.abs(ny - b.cy) > 0.25) {
 				b.cx = nx; b.cy = ny;
 				placeBox(b);
+				b.dirty = true;
 				moved = true;
 			}
 		}
@@ -275,11 +251,32 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 	};
 	const layoutAll = () => {
 		W = innerWidth; H = innerHeight;
-		placeSwarm(0, focal.x ?? 0.62 * W, focal.y ?? 0.46 * H);
+		placeFormation(0);
+		crumb.setAttribute('x', 0.455 * W);
+		crumb.setAttribute('y', 0.06 * H);
 		for (const e of edges) placeEdge(e);
 	};
-	layoutAll();
 	addEventListener('resize', layoutAll);
+
+	// -- drill in / out ---------------------------------------------------------
+	svg.addEventListener('pointerdown', (ev) => {
+		const hub = ev.target.closest?.('.hub');
+		if (hub?.dataset.enter) {
+			ev.stopPropagation();
+			build(hub.dataset.enter);
+		}
+	});
+	crumb.addEventListener('pointerdown', (ev) => {
+		ev.stopPropagation();
+		const parent = machine.levels[levelId].parent;
+		if (parent) build(parent);
+	});
+	addEventListener('keydown', (ev) => {
+		if (ev.code === 'Escape') {
+			const parent = machine.levels[levelId].parent;
+			if (parent) build(parent);
+		}
+	});
 
 	// -- artist mode: every knob row scrubs -----------------------------------
 	let artistOn = false;
@@ -295,6 +292,7 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 		drag.v0 = rack.get(drag.path);
 		row.classList.add('live');
 		row.setPointerCapture?.(ev.pointerId);
+		machine.note('scrub', drag.path);
 	});
 	svg.addEventListener('pointermove', (ev) => {
 		if (!drag.path) return;
@@ -324,8 +322,7 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 
 	// -- live updates ----------------------------------------------------------
 	const probeV = new Vector3();
-	const tensionNode = graph.get('tension');
-	let lastTick = 0, lastOpacity = -1, lastT = 0;
+	let lastTick = 0, lastOpacity = -1, lastForm = 0, lastEdge = 0;
 
 	const fmt = (n) => {
 		const v = n.value;
@@ -341,34 +338,36 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 	};
 
 	const tick = (t, view) => {
-		const dt = Math.min(t - lastT, 0.1); lastT = t;
 		// the circuit flares when the band tension does (one style write)
 		let op = STYLE.baseOpacity
-			+ STYLE.flareOpacity * Math.min(1, tensionNode.value / 3);
+			+ STYLE.flareOpacity * Math.min(1, machine.tension.value / 3);
 		if (artistOn) op = 0.92; // tuning wants a steady lamp
 		if (Math.abs(op - lastOpacity) > 0.01) {
 			wrap.style.opacity = op.toFixed(2);
 			lastOpacity = op;
 		}
-		let moved = false;
+		// ALL movement runs at 30Hz: smoothed labels don't need 60, and the
+		// SVG repaint (text halos, screen-spanning edges) is the overlay's
+		// whole cost — per-frame work below the gate is one opacity write
+		if (t - lastEdge < 1 / 30) return;
+		const dt = Math.min(t - lastEdge, 0.1); // time since the last pass
+		lastEdge = t;
+		let moved = false; // any box moved → its edges re-anchor
 		if (view?.camera && view?.wells) {
-			// raw screen projections of the two tips: they pin the probes AND
-			// their midpoint is the focal the whole swarm circles
+			// raw screen projections of the two tips: they pin the probe
+			// nodes, and their midpoint is the focal the formation frames
 			const raw = [];
 			for (let i = 0; i < 2; i++) {
 				probeV.copy(view.wells[i].p).project(view.camera);
 				raw.push([(probeV.x + 1) / 2 * W, (1 - probeV.y) / 2 * H]);
 			}
-			const fx = (raw[0][0] + raw[1][0]) / 2;
-			const fy = (raw[0][1] + raw[1][1]) / 2;
-			const kf = 1 - Math.exp(-SWARM.focalLag * dt);
-			focal.x = focal.x === null ? fx : focal.x + (fx - focal.x) * kf;
-			focal.y = focal.y === null ? fy : focal.y + (fy - focal.y) * kf;
-			// the tip probes first (smoothed, clamped) — the swarm yields to
-			// them, so they must sit where they'll be this frame
+			raw.mid = [(raw[0][0] + raw[1][0]) / 2, (raw[0][1] + raw[1][1]) / 2];
+			const kf = 1 - Math.exp(-PLATE.focalLag * dt);
+			focal.x = focal.x === null ? raw.mid[0] : focal.x + (raw.mid[0] - focal.x) * kf;
+			focal.y = focal.y === null ? raw.mid[1] : focal.y + (raw.mid[1] - focal.y) * kf;
 			for (const b of boxes.values()) {
 				if (b.probe === undefined) continue;
-				let [sx, sy] = raw[b.probe];
+				let [sx, sy] = b.probe === 'mid' ? raw.mid : raw[b.probe];
 				sx = Math.min(Math.max(sx, 0.44 * W), 0.96 * W);
 				sy = Math.min(Math.max(sy, 0.05 * H), 0.94 * H);
 				const k = 1 - Math.exp(-8 * dt);
@@ -377,16 +376,31 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 				if (Math.abs(b.sx - b.cx) + Math.abs(b.sy - b.cy) > 0.5) {
 					b.cx = b.sx; b.cy = b.sy;
 					placeBox(b);
+					b.dirty = true;
 					moved = true;
 				}
 			}
-			// then the pack circles the mass
-			if (placeSwarm(t, focal.x, focal.y)) moved = true;
 		}
-		if (moved) for (const e of edges) placeEdge(e);
-		// the 10Hz pass: values, knob rows, edge activity
+		// the formation drifts slowly — 20Hz placement is invisible and
+		// spares the repaint (the probes above stay per-frame; they chase)
+		if (t - lastForm >= 0.05) {
+			lastForm = t;
+			if (placeFormation(t)) moved = true;
+		}
+		// edges re-anchor only where a box moved: every placeEdge dirties
+		// the whole span it crosses
+		if (moved) {
+			for (const e of edges) {
+				if (e.from.dirty || e.to.dirty) placeEdge(e);
+			}
+			for (const b of boxes.values()) b.dirty = false;
+		}
+		// the 10Hz pass: machine taps, values, knob rows, edge activity+flow
 		if (t - lastTick < 0.1) return;
 		lastTick = t;
+		machine.update(t);
+		const dash = (-(t * 8) % 12).toFixed(1); // the crawl along the wires
+		for (const e of edges) e.line.setAttribute('stroke-dashoffset', dash);
 		for (const b of boxes.values()) {
 			const s = fmt(b.node);
 			if (s !== b.lastVal) { b.valEl.textContent = s; b.lastVal = s; }
@@ -405,10 +419,12 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 		}
 	};
 
+	build(machine.top);
+
 	const destroy = () => {
 		removeEventListener('resize', layoutAll);
 		wrap.remove();
 	};
 
-	return { tick, setArtist, destroy, element: wrap };
+	return { tick, setArtist, destroy, element: wrap, build, level: () => levelId };
 }
