@@ -22,18 +22,21 @@ const el = (tag, attrs = {}) => {
 	return e;
 };
 
-// the hand-authored spatial score: node id → normalized viewport position
-// (or a probe index), plus the voice's color (edges only — the text is one
-// faint white) and a parallax depth: nearer panes swing further against
-// the camera's orbit. The text column (x < ~0.42) is sacred; edges may
-// cross the middle — that's where the mass lives.
+// the swarm score: the readout panes are not pinned to the viewport —
+// they CIRCLE the mass. Each fixed node rides its own slow ellipse around
+// the pair's smoothed screen midpoint: one shared direction, staggered
+// phases, breathing radii — swarm framing with sentinel energy, never
+// static, never settled. Per node: r = orbit radius (fraction of viewport
+// height), w = angular rate (rad/s; the close-in panes circle faster,
+// Kepler-fashion), ph = phase. Color feeds the edges only — the text is
+// one faint white. The text column (x < ~0.42) stays sacred via clamp.
 const LAYOUT = {
-	anchor: { x: 0.565, y: 0.10, depth: 1.15, color: '#b8b8b4' },
-	stir: { x: 0.865, y: 0.14, depth: 0.7, color: '#ffd9fb' },
-	stretch: { x: 0.485, y: 0.80, depth: 1.0, color: '#b8b8b4' },
-	tension: { x: 0.655, y: 0.88, depth: 1.35, color: '#f2b75c' },
-	omega: { x: 0.835, y: 0.80, depth: 0.85, color: '#e4699b' },
-	skin: { x: 0.925, y: 0.52, depth: 0.6, color: '#8a8a86' },
+	anchor: { r: 0.30, w: 0.10, ph: 0.0, color: '#b8b8b4' },
+	stir: { r: 0.37, w: 0.085, ph: 1.05, color: '#ffd9fb' },
+	stretch: { r: 0.25, w: 0.13, ph: 2.2, color: '#b8b8b4' },
+	tension: { r: 0.21, w: 0.16, ph: 3.3, color: '#f2b75c' },
+	omega: { r: 0.29, w: 0.115, ph: 4.4, color: '#e4699b' },
+	skin: { r: 0.36, w: 0.07, ph: 5.4, color: '#8a8a86' },
 	'tip.a': { probe: 0, color: '#5ee8e0' },
 	'tip.b': { probe: 1, color: '#5ee8e0' },
 };
@@ -45,7 +48,14 @@ const STYLE = {
 	flareOpacity: 0.30, // added as tension/3 → 1
 	edgeBase: 0.42,
 	edgeActive: 0.45,
-	parallax: 20, // px of pane sway per world unit of camera sway, at depth 1
+};
+
+// the circling itself: screen ellipse shape + the slow radius breath
+const SWARM = {
+	ecc: 1.25,     // x stretch of each orbit (screens are wide)
+	squish: 0.62,  // y squash — circling reads as a ring seen at an angle
+	breathe: 0.15, // ± radius modulation: closing in, drifting off
+	focalLag: 1.2, // /s — the swarm frames the mass, it doesn't twitch with it
 };
 
 const CSS = `
@@ -200,16 +210,72 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 		const oy = b.cy - b.h / 2 + 10.5 + STYLE.pad - 2;
 		b.g.setAttribute('transform', `translate(${ox},${oy})`);
 	};
-	const layoutAll = () => {
-		W = innerWidth; H = innerHeight;
+	// where the swarm looks when it hasn't seen the mass yet
+	const focal = { x: null, y: null };
+	// boids separation: when two panes' rects (plus a margin) overlap in
+	// the normalized ellipse metric, push them apart along the offset —
+	// mutual between panes, one-sided against the pinned tip probes
+	const shove = (p, q, mutual) => {
+		const sx = (p.b.w + q.b.w) / 2 + 14, sy = (p.b.h + q.b.h) / 2 + 10;
+		const dx = q.x - p.x, dy = q.y - p.y;
+		const ox = dx / sx, oy = dy / sy;
+		const d2 = ox * ox + oy * oy;
+		if (d2 >= 1) return;
+		if (d2 < 1e-6) { p.y -= sy * 0.5; return; } // dead-centred: just duck
+		const d = Math.sqrt(d2);
+		const f = (1 - d) / d * (mutual ? 0.5 : 1);
+		p.x -= dx * f; p.y -= dy * f;
+		if (mutual) { q.x += dx * f; q.y += dy * f; }
+	};
+	// the whole swarm, at time t, circling (fx, fy):
+	// orbit attractor → separation → clamp → commit
+	const pack = [];
+	const placeSwarm = (t, fx, fy) => {
+		pack.length = 0;
 		for (const b of boxes.values()) {
 			if (b.probe !== undefined) continue;
-			b.bx = b.lay.x * W; // resting pose — tick sways around it
-			b.by = b.lay.y * H;
-			b.cx = b.bx;
-			b.cy = b.by;
-			placeBox(b);
+			const th = b.lay.ph + b.lay.w * t;
+			const br = b.lay.r * H
+				* (1 + SWARM.breathe * Math.sin(0.037 * t + b.lay.ph * 2));
+			pack.push({
+				b,
+				x: fx + Math.cos(th) * br * SWARM.ecc,
+				y: fy + Math.sin(th) * br * SWARM.squish,
+			});
 		}
+		// clamp INSIDE the relaxation: two panes shoved to the same boundary
+		// must separate again along it, or they re-stack at the clamp
+		for (let it = 0; it < 3; it++) {
+			for (const p of pack) {
+				// half-extent-aware: the text column stays sacred even for a
+				// wide pane, and nothing slides off the viewport
+				p.x = Math.min(Math.max(p.x, 0.445 * W + p.b.w / 2), 0.985 * W - p.b.w / 2);
+				p.y = Math.min(Math.max(p.y, 0.03 * H + p.b.h / 2), 0.97 * H - p.b.h / 2);
+			}
+			for (let i = 0; i < pack.length; i++) {
+				for (let j = i + 1; j < pack.length; j++) shove(pack[i], pack[j], true);
+				for (const b of boxes.values()) {
+					if (b.probe === undefined || b.sx === null) continue;
+					shove(pack[i], { b, x: b.cx, y: b.cy }, false);
+				}
+			}
+		}
+		let moved = false;
+		for (const p of pack) {
+			const b = p.b;
+			const nx = Math.min(Math.max(p.x, 0.445 * W + b.w / 2), 0.985 * W - b.w / 2);
+			const ny = Math.min(Math.max(p.y, 0.03 * H + b.h / 2), 0.97 * H - b.h / 2);
+			if (Math.abs(nx - b.cx) + Math.abs(ny - b.cy) > 0.25) {
+				b.cx = nx; b.cy = ny;
+				placeBox(b);
+				moved = true;
+			}
+		}
+		return moved;
+	};
+	const layoutAll = () => {
+		W = innerWidth; H = innerHeight;
+		placeSwarm(0, focal.x ?? 0.62 * W, focal.y ?? 0.46 * H);
 		for (const e of edges) placeEdge(e);
 	};
 	layoutAll();
@@ -285,31 +351,24 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 			lastOpacity = op;
 		}
 		let moved = false;
-		// the fixed panes hang in the same space the camera glides through:
-		// each parallaxes against the orbital sway, nearer panes (bigger
-		// depth) swinging further. The tips need none of this — they ride
-		// the projection itself.
-		if (view?.sway) {
-			const px = -view.sway.x * STYLE.parallax;
-			const py = view.sway.y * STYLE.parallax;
-			for (const b of boxes.values()) {
-				if (b.probe !== undefined) continue;
-				const d = b.lay.depth ?? 1;
-				const nx = b.bx + px * d, ny = b.by + py * d;
-				if (Math.abs(nx - b.cx) + Math.abs(ny - b.cy) > 0.25) {
-					b.cx = nx; b.cy = ny;
-					placeBox(b);
-					moved = true;
-				}
-			}
-		}
-		// the tip probes chase the projected wells every frame (2 transforms)
 		if (view?.camera && view?.wells) {
+			// raw screen projections of the two tips: they pin the probes AND
+			// their midpoint is the focal the whole swarm circles
+			const raw = [];
+			for (let i = 0; i < 2; i++) {
+				probeV.copy(view.wells[i].p).project(view.camera);
+				raw.push([(probeV.x + 1) / 2 * W, (1 - probeV.y) / 2 * H]);
+			}
+			const fx = (raw[0][0] + raw[1][0]) / 2;
+			const fy = (raw[0][1] + raw[1][1]) / 2;
+			const kf = 1 - Math.exp(-SWARM.focalLag * dt);
+			focal.x = focal.x === null ? fx : focal.x + (fx - focal.x) * kf;
+			focal.y = focal.y === null ? fy : focal.y + (fy - focal.y) * kf;
+			// the tip probes first (smoothed, clamped) — the swarm yields to
+			// them, so they must sit where they'll be this frame
 			for (const b of boxes.values()) {
 				if (b.probe === undefined) continue;
-				probeV.copy(view.wells[b.probe].p).project(view.camera);
-				let sx = (probeV.x + 1) / 2 * W;
-				let sy = (1 - probeV.y) / 2 * H;
+				let [sx, sy] = raw[b.probe];
 				sx = Math.min(Math.max(sx, 0.44 * W), 0.96 * W);
 				sy = Math.min(Math.max(sy, 0.05 * H), 0.94 * H);
 				const k = 1 - Math.exp(-8 * dt);
@@ -321,6 +380,8 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 					moved = true;
 				}
 			}
+			// then the pack circles the mass
+			if (placeSwarm(t, focal.x, focal.y)) moved = true;
 		}
 		if (moved) for (const e of edges) placeEdge(e);
 		// the 10Hz pass: values, knob rows, edge activity

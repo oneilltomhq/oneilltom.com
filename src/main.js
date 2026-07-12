@@ -319,20 +319,17 @@ async function main() {
 		// stay inside the drift envelope: the open room front never shows.
 		const camRest = new Vector3(0, 0, 6);
 		const ORBIT = {
-			period: 44,   // s per lap — drift, not a ride
-			a: 0.8,       // semi-major axis, world units
-			b: 0.42,      // semi-minor — the ellipse, not a circle
-			tilt: 0.5,    // off-flat inclination, rad
-			ecc: 0.3,     // pacing: faster near, slower far
-			nodal: 0.011, // loop precession about Y, rad/s (~9.5 min/rev)
+			period: 34,   // s per lap — felt travel, still unhurried
+			a: 1.25,      // semi-major axis, world units
+			b: 0.6,       // semi-minor — the ellipse, not a circle
+			tilt: 0.6,    // off-flat inclination, rad
+			ecc: 0.35,    // pacing: faster near, slower far
+			nodal: 0.015, // loop precession about Y, rad/s (~7 min/rev)
 		};
 		const rollAxis = new Vector3(0, 0, 1); // camera local forward/back
 		const qRoll = new Quaternion(), qNode = new Quaternion();
 		const yAxis = new Vector3(0, 1, 0), xAxis = new Vector3(1, 0, 0);
-		// the camera's live offset from rest — the circuitry overlay
-		// parallaxes its panes against this, so the readouts ride the same
-		// orbit the world does
-		const sway = new Vector3();
+		const sway = new Vector3(); // offset from rest, rebuilt each frame
 		const applyDriftCamera = (t) => {
 			const m = (2 * Math.PI / ORBIT.period) * t;
 			const th = m + ORBIT.ecc * Math.sin(m); // equation-of-center pacing
@@ -511,7 +508,7 @@ async function main() {
 			presentQuad.render(synth.renderer);
 			const r = ping.read; ping.read = ping.write; ping.write = r;
 			// the circuitry overlay: DOM/SVG, outside the GPU loop entirely
-			circuit?.tick(t, { camera, wells, sway });
+			circuit?.tick(t, { camera, wells });
 		};
 		window.__wells = wells; window.__sim = sim;
 		window.__sling = sling; window.__graph = graph;
