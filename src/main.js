@@ -2,19 +2,16 @@ import { HydraTSL } from './hydra-tsl.js';
 import {
 	FlubberField, wellDriver, noiseFlowDriver, cohesionDriver, burstDriver,
 } from '@oneilltom/lib3/flubber';
-import { Rack, bindKey, bindUniform, localStorageAdapter } from '@oneilltom/lib3/rack';
-import { createScore } from './score.js';
-import { knob } from './graph.js';
+import { Rack } from '@oneilltom/lib3/rack';
+import { createSling } from './sling.js';
 import {
-	Scene, PerspectiveCamera, InstancedMesh, Mesh, BoxGeometry, TetrahedronGeometry,
-	OctahedronGeometry, PlaneGeometry, MeshBasicNodeMaterial, DynamicDrawUsage,
-	Vector2, Vector3, Quaternion, Matrix4, Raycaster,
+	Scene, PerspectiveCamera, Mesh, PlaneGeometry, MeshBasicNodeMaterial,
+	Vector2, Vector3, Quaternion, Raycaster,
 	RenderTarget, QuadMesh, HalfFloatType, LinearFilter, ClampToEdgeWrapping, RepeatWrapping,
 	AdditiveBlending, DoubleSide,
 } from 'three/webgpu';
 import {
-	texture, screenUV, uv, normalLocal, instanceIndex, hash, select, uint,
-	vec2, vec3, clamp, mix, length, normalize, positionWorld, smoothstep,
+	texture, screenUV, uv, vec2, vec3, mix, positionWorld, smoothstep,
 	uniform, screenCoordinate,
 } from 'three/tsl';
 
@@ -236,19 +233,16 @@ async function main() {
 		addPlane(rd, rh, mkChamberMat(0.5, 0.54, 0.08, 0.44, 0.34, 0.5, 0.42),
 			[cx + rw / 2, cy, cz], [0, -HALF_PI, 0]);          // right wall
 	
-		// ---- the scene's own ping-pong: previous frame as a material -------
+		// ---- the scene's own ping-pong: previous frame as a texture --------
 		// Every frame the whole scene is rendered into one of these two
-		// targets and presented from it; next frame the boxes' faces sample
-		// it. Each box face is a tiny screen showing the swarm, whose boxes
-		// show the swarm — live video feedback, recursion until the pixels
-		// run out. Same read/write discipline as the synth buffers: sample
-		// only the half not being rendered into.
+		// targets and presented from it; next frame the flubber glass
+		// refracts it. Same read/write discipline as the synth buffers:
+		// sample only the half not being rendered into.
 		const mkSceneRT = () => new RenderTarget(1, 1, {
 			type: HalfFloatType, minFilter: LinearFilter, magFilter: LinearFilter,
 			wrapS: ClampToEdgeWrapping, wrapT: ClampToEdgeWrapping, depthBuffer: true,
 		});
 		const ping = { read: mkSceneRT(), write: mkSceneRT() };
-		const mirrorTex = texture(ping.read.texture, uv()); // .value re-pointed post-swap
 
 		// ---- display grade: one committed look on the way out --------------
 		// Lives ONLY on the present pass: the synth buffers and the scene
@@ -292,61 +286,6 @@ async function main() {
 		presentMat.colorNode = gradeNode(presentTex);
 		const presentQuad = new QuadMesh(presentMat);
 	
-		// tetra/octa faces wear the synth outputs — patch choice computed in
-		// the shader from instanceIndex + dominant local axis, hash() tint.
-		// The boxes are the mirrors: previous frame on every face, faintly
-		// modulated by a patch so each recursion level drifts more synthward.
-		const faceTex = [1, 2, 3].map((i) => texture(displays[i].rt.texture, uv()));
-		const mkSwarmMaterial = (offset, mirror) => {
-			const m = new MeshBasicNodeMaterial();
-			const an = normalLocal.abs();
-			const faceId = select(an.x.greaterThan(an.y).and(an.x.greaterThan(an.z)), uint(0),
-				select(an.y.greaterThan(an.z), uint(1), uint(2)));
-			const layer = instanceIndex.add(faceId).add(uint(offset)).mod(uint(3));
-			const tint = hash(instanceIndex.add(uint(offset * 131 + 7))).mul(0.55).add(0.7);
-			// sample all unconditionally (texture fetches inside non-uniform
-			// branches degrade derivatives on WGSL); select on the values
-			const patch = select(layer.equal(uint(0)), faceTex[0],
-				select(layer.equal(uint(1)), faceTex[1], faceTex[2]));
-			m.colorNode = mirror
-				? mirrorTex.mul(patch.mul(0.7).add(0.75)).mul(1.25).mul(tint)
-				: patch.mul(tint);
-			return m;
-		};
-	
-		// ?swarm=1 brings back the instanced-primitive swarm alongside the
-		// globules; default is the minimal globules-only composition
-		const SWARM = params.get('swarm') === '1';
-		const KINDS = !SWARM ? [] : [
-			{ geo: new BoxGeometry(0.3, 0.3, 0.3), count: 56, r: 0.26, mirror: true },
-			{ geo: new TetrahedronGeometry(0.26), count: 36, r: 0.2 },
-			{ geo: new OctahedronGeometry(0.24), count: 36, r: 0.2 },
-		];
-		const bodies = [];
-		const meshes = KINDS.map((k, ki) => {
-			const mesh = new InstancedMesh(k.geo, mkSwarmMaterial(ki, k.mirror), k.count);
-			mesh.instanceMatrix.setUsage(DynamicDrawUsage);
-			mesh.frustumCulled = false; // always fully in frame anyway
-			scene.add(mesh);
-			for (let i = 0; i < k.count; i++) {
-				const s = 0.55 + Math.random() * 0.6; // size = mass variation
-				bodies.push({
-					mesh, idx: i, s, r: k.r * s,
-					p: new Vector3((Math.random() - 0.5) * 5.2,
-						(Math.random() - 0.5) * 3, (Math.random() - 0.5) * 2.4),
-					v: new Vector3(Math.random() - 0.5, Math.random() - 0.5,
-						Math.random() - 0.5).multiplyScalar(0.05), // wake up gently
-					q: new Quaternion().random(),
-					w: new Vector3(Math.random() - 0.5, Math.random() - 0.5,
-						Math.random() - 0.5).normalize().multiplyScalar(0.15 + Math.random() * 0.5),
-					pull: 0.75 + Math.random() * 0.5,
-					wf: 0.5 + Math.random() * 0.6, // wander frequency
-					ph: [Math.random(), Math.random(), Math.random()].map((x) => x * Math.PI * 2),
-				});
-			}
-			return mesh;
-		});
-	
 		// ---- globules: the metaball surface (GPU flubber field) ------------
 		// The shape lives in a GPU storage substrate now — particles in storage
 		// buffers, driven by the same roaming wells, splatted into a density
@@ -356,8 +295,7 @@ async function main() {
 		const GLOBS = params.get('globs') !== '0';
 		let flubber = null;
 		let flubberBurst = null; // click-shockwave driver, triggered on pointerdown
-		let flubNoise = null, flubCohesion = null; // score crash knobs (live uniforms)
-		let flubLattice = null; // two-cohort crystal lattice (live uniforms)
+		let flubNoise = null, flubCohesion = null; // live surface/cohesion uniforms
 	
 		const camera = new PerspectiveCamera(38, 1, 0.1, 50);
 		camera.position.z = 6;
@@ -445,7 +383,7 @@ async function main() {
 		if (INSPECT) {
 			applyInspectCamera();
 			addEventListener('pointerdown', (ev) => {
-				if (ev.target.closest('a, .patch, #circuitry .knob, #circuitry-pop, #circuitry-snaps')) return;
+				if (ev.target.closest('a, .patch, #circuitry .knobrow')) return;
 				ev.preventDefault();
 				inspectState.dragging = true;
 				inspectState.dragged = false;
@@ -493,50 +431,14 @@ async function main() {
 	
 		// FlubberField is created below, once the wells it reads are defined.
 	
-		// ---- physics: three invisible gravity wells with spin --------------
-		// Force model adapted from three.js's webgpu_tsl_compute_attractors_
-		// particles: real inverse-square gravity (softened — bodies are
-		// visible, they must not singularity-slingshot), plus a spinning
-		// force axis×toAttractor scaled by the SAME gravity strength, so
-		// swirl peaks exactly where gravity peaks → spiral arms. Three
-		// roaming wells with different precessing spin axes trade bodies
-		// between basins. The spin term does work against damping, keeping
-		// the discs circulating forever. NOT copied from the example: its
-		// mod() box-wrap boundary — a position teleport, the exact bug
-		// class behind 'the glitch'. Soft frustum walls instead. Positions
-		// change ONLY via velocities (see test/frame-continuity.mjs).
-		// tunable physics constants live on one object so the rack can bind
-		// them by key — same reads as before, now addressable
-		const PHYS = {
-			grav: 2.6,     // G·M, per-body mass in b.pull
-			spin: 1.4,     // spin force vs gravity strength — eased so gravity
-			               // wins and orbits go elliptical, not a forced
-			               // constant-speed circular limit cycle
-			wander: 0.1,
-			drag: 0.6,     // per-second exponential — lighter, so velocity keeps
-			               // its memory and bodies coast (momentum) instead of
-			               // settling to a terminal speed
-			speedMax: 2.6, // soft governor
-		};
-		const SOFT2 = 0.24 * 0.24;               // softening radius² (d² += this)
-		                                          // tighter core → sharper gravity
-		                                          // peak → fast periapsis swoops,
-		                                          // slow apoapsis drift (Kepler)
-		const SEP_K = 0.7, SEP_F_MAX = 2.5;       // soft mutual repulsion
-		const SPEED_CAP = 3.2;                    // hard ceiling above the governor
-		                                          // (test budget = 3.4, keep in sync)
-		const Z_RANGE = 1.5;
-		const K_WALL_IN = 22, K_WALL_OUT = 34;    // soft frustum walls, backstop only
-		// each well has a temperament: gm/sm scale its gravity/spin, sp its
-		// roaming tempo, and a slow per-well mood swing (computed in step)
-		// juxtaposes calm against violent over ~1.5min cycles
+		// ---- the wells: the two tips of the sling ---------------------------
+		// The particle mass falls toward (and swirls around) these two
+		// points; src/sling.js owns their motion, pull (gm) and swirl (sm).
+		// Inverse-square gravity + axis×toAttractor swirl live in lib3's
+		// wellDriver on the GPU.
 		const wells = [
-			{ p: new Vector3(), axis: new Vector3(), ph: 0.0, ax: 1.45, ay: 0.5,
-				gm: 1.5, sm: 0.7, sp: 0.65, mood: 1 },  // the heavy: deep, slow
-			{ p: new Vector3(), axis: new Vector3(), ph: 2.1, ax: 1.0, ay: 0.8,
-				gm: 0.7, sm: 2.1, sp: 1.6, mood: 1 },   // the spinner: violent, fast
-			{ p: new Vector3(), axis: new Vector3(), ph: 4.2, ax: 1.3, ay: 0.6,
-				gm: 1.0, sm: 1.2, sp: 1.0, mood: 1 },   // the drifter: in between
+			{ p: new Vector3(), axis: new Vector3(0, 0, 1), gm: 1.3, sm: 0.7 }, // tip A: heavy
+			{ p: new Vector3(), axis: new Vector3(0, 0, 1), gm: 0.8, sm: 1.6 }, // tip B: light
 		];
 		// GPU metaball field: storage-buffer particles driven by these wells,
 		// splatted to a density texture, marched with the site-tuned glass
@@ -548,224 +450,52 @@ async function main() {
 			// the site's tuned values, so only the drivers and textures differ.
 			flubberBurst = burstDriver();
 			flubNoise = noiseFlowDriver();
-			flubCohesion = cohesionDriver();
-			// two intercalating LATTICES. Each particle owns a home site in a
-			// small crystal bound to one of the two duet partners (cohort by
-			// index parity, 80 spheres each in a jittered 4×5×4 grid). Cohort
-			// B's grid sits half a cell off A's, so when the anchors close the
-			// two crystals slot into each other's interstices — and the
-			// pendulum-slingshot swings them THROUGH each other at perigee.
-			// uStr is the lattice grip, choreographed by the score:
-			// 0 = free cloud, high = crystalline body.
-			flubLattice = (() => {
-				const uA = uniform(new Vector3());
-				const uB = uniform(new Vector3());
-				const uStr = uniform(0);
-				const PITCH = 0.22;
-				return {
-					uniforms: { uA, uB, uStr },
-					force({ pos, index }) {
-						const half = index.div(uint(2));
-						const isB = index.mod(uint(2)).toFloat();
-						const site = vec3(
-							half.mod(uint(4)).toFloat().sub(1.5),
-							half.div(uint(4)).mod(uint(5)).toFloat().sub(2.0),
-							half.div(uint(20)).mod(uint(4)).toFloat().sub(1.5))
-							.add(isB.mul(0.5))
-							.add(vec3(
-								hash(index).sub(0.5),
-								hash(index.add(uint(7))).sub(0.5),
-								hash(index.add(uint(13))).sub(0.5)).mul(0.45))
-							.mul(PITCH);
-						return mix(uA, uB, isB).add(site).sub(pos).mul(uStr);
-					},
-					update() {
-						uA.value.copy(wells[0].p);
-						uB.value.copy(wells[1].p);
-					},
-				};
-			})();
+			// firmer than the old default: no score curates cohesion anymore,
+			// so the standing pull must survive the whips on its own
+			flubCohesion = cohesionDriver({ strength: 0.8 });
 			flubber = new FlubberField({
 				renderer: synth.renderer,
 				camera,
-				drivers: [wellDriver({ wells }), flubNoise, flubCohesion, flubberBurst, flubLattice],
+				drivers: [wellDriver({ wells, count: 2 }), flubNoise, flubCohesion, flubberBurst],
 				sceneTexture: ping.read.texture,
 				rimTexture: displays[1].rt.texture,
 			});
+			flubber.u.uDamp.value = 0.75; // eat the whip's fling a little faster
 			scene.add(flubber.mesh);
 			window.__flubber = flubber;
 		}
 
-		const dq = new Quaternion(), tmp = new Vector3(), tmp2 = new Vector3();
-	
-		const softWall = (b, axis, limit, dt) => {
-			const c = 'xyz'[axis];
-			let depth = 0, n = 0; // n: inward wall normal
-			if (b.p[c] + b.r > limit) { depth = b.p[c] + b.r - limit; n = -1; }
-			else if (b.p[c] - b.r < -limit) { depth = -limit - (b.p[c] - b.r); n = 1; }
-			if (depth > 0) b.v[c] += n * (b.v[c] * n < 0 ? K_WALL_IN : K_WALL_OUT) * depth * dt;
-		};
-	
-		// ---- the rack: every tunable constant gets an address ---------------
-		// lib3's control plane (a modular-synth jack panel). Params bind to the
-		// live objects the score/physics already read every step, so a set()
-		// (with optional glide) lands without any extra plumbing. Defaults are
-		// the code values — the rack changes nothing until a knob turns.
-		// Snapshots persist to localStorage only on explicit snap()/apply().
-		// The score registers its own tunables (/score, /flubber bases, /grade
-		// swell) inside createScore; the host registers what it owns below.
-		const rack = new Rack({ storage: localStorageAdapter('oneilltom-rack') });
-		if (flubber) {
-			rack.add('/flubber/radiusScale', bindUniform(flubber.u.uRadiusScale), { min: 0.4, max: 2 });
-			rack.add('/flubber/iso', bindUniform(flubber.u.uIso), { min: 0.2, max: 2.5 });
-			rack.add('/flubber/refract', bindUniform(flubber.u.uRefract), { min: 0, max: 0.8 });
-			rack.add('/flubber/fresnelStrength', bindUniform(flubber.u.uFresnelStrength), { min: 0, max: 2 });
-			rack.add('/flubber/fresnelBase', bindUniform(flubber.u.uFresnelBase), { min: 0, max: 1 });
-			rack.add('/flubber/rimStrength', bindUniform(flubber.u.uRimStrength), { min: 0, max: 1 });
-		}
-		rack.add('/physics/grav', bindKey(PHYS, 'grav'), { min: 0, max: 8 });
-		rack.add('/physics/spin', bindKey(PHYS, 'spin'), { min: 0, max: 4 });
-		rack.add('/physics/drag', bindKey(PHYS, 'drag'), { min: 0, max: 3, unit: '/s' });
-		rack.add('/physics/wander', bindKey(PHYS, 'wander'), { min: 0, max: 1 });
-		rack.add('/physics/speedMax', bindKey(PHYS, 'speedMax'), { min: 0.5, max: 6, unit: 'u/s' });
-		const WELL_NAMES = ['heavy', 'spinner', 'drifter'];
-		wells.forEach((w, i) => {
-			rack.add(`/wells/${WELL_NAMES[i]}/gm`, bindKey(w, 'gm'), { min: 0, max: 4, label: `${WELL_NAMES[i]} gravity` });
-			rack.add(`/wells/${WELL_NAMES[i]}/sm`, bindKey(w, 'sm'), { min: 0, max: 4, label: `${WELL_NAMES[i]} spin` });
-			// w.sp (roaming tempo) is a dead field in the score era — no knob
-		});
-		rack.add('/grade/contrast', bindUniform(grade.contrast), { min: 0.5, max: 2.5 });
-		rack.add('/grade/pivot', bindUniform(grade.pivot), { min: 0.02, max: 0.5 });
-		rack.add('/grade/split', bindUniform(grade.split), { min: 0, max: 1.5 });
-		rack.add('/grade/sat', bindUniform(grade.sat), { min: 0, max: 2.5 });
+		// ---- the rack: every tunable gets an address -------------------------
+		// lib3's control plane. The sling registers the few chosen knobs
+		// (/sling/*, /flubber/noise) inside createSling; nothing persists —
+		// a reload always serves the authored defaults.
+		const rack = new Rack();
 		window.__rack = rack;
 
-		// ---- the score (src/score.js): choreography clock for the wells -----
-		const scoreCtl = createScore({
-			wells,
-			flub: {
-				burst: flubberBurst, noise: flubNoise, cohesion: flubCohesion,
-				lattice: flubLattice, field: flubber,
-			},
-			grade,
-			rack,
-		});
-		const { SCORE, sep, drive, followFlub, graph } = scoreCtl;
-		const scoreStep = scoreCtl.step;
-		const score = scoreCtl.state;
-		// host-owned knobs join the circuitry as leaf nodes too
-		wells.forEach((w, i) => {
-			knob(graph, rack, `/wells/${WELL_NAMES[i]}/gm`, `well.${WELL_NAMES[i]}`);
-			knob(graph, rack, `/wells/${WELL_NAMES[i]}/sm`, `well.${WELL_NAMES[i]}`);
-		});
-		for (const p of ['grav', 'spin', 'drag', 'wander', 'speedMax']) knob(graph, rack, `/physics/${p}`);
-		if (flubber) {
-			for (const p of ['radiusScale', 'iso', 'refract', 'fresnelStrength', 'fresnelBase', 'rimStrength']) {
-				knob(graph, rack, `/flubber/${p}`);
-			}
-		}
-		// (display-grade knobs: present-pass only, no score node to feed)
-		for (const p of ['contrast', 'pivot', 'split', 'sat']) knob(graph, rack, `/grade/${p}`);
+		// ---- the sling (src/sling.js): the perpetual mechanism --------------
+		const sling = createSling({ wells, noise: flubNoise, rack });
+		const { graph } = sling;
+		const slingStep = sling.step;
 
-		const physicsStep = (dt, t) => {
-			// pairwise soft separation — O(n²)/2 ≈ 8k pairs, cheap at this n.
-			// Strength (R²/d² − 1): zero at the support edge, ramps smoothly
-			// as bodies approach, so nothing ever switches on with a pop.
-			for (let i = 0; i < bodies.length; i++) {
-				const a = bodies[i];
-				for (let j = i + 1; j < bodies.length; j++) {
-					const b = bodies[j];
-					tmp.subVectors(a.p, b.p);
-					const R = (a.r + b.r) * 2.2, d2 = tmp.lengthSq();
-					if (d2 > R * R || d2 < 1e-8) continue;
-					const f = Math.min(SEP_K * (R * R / d2 - 1), SEP_F_MAX) * dt;
-					tmp.normalize();
-					a.v.addScaledVector(tmp, f);
-					b.v.addScaledVector(tmp, -f);
-				}
-			}
-			for (const b of bodies) {
-				for (const w of wells) {
-					tmp.subVectors(w.p, b.p); // toAttractor (NOT normalized —
-					// the spin cross-product wants the full vector, as in
-					// the three.js example)
-					const d2 = tmp.lengthSq() + SOFT2;
-					const g = PHYS.grav * w.gm * w.mood * b.pull / d2;
-					// gravity: g along the unit direction
-					b.v.addScaledVector(tmp, g / Math.sqrt(d2) * dt);
-					// spin: (axis · g · spin) × toAttractor — tangential,
-					// magnitude ∝ g·d, peaks just outside the softening core
-					tmp2.crossVectors(w.axis, tmp);
-					b.v.addScaledVector(tmp2, g * PHYS.spin * w.sm * dt);
-				}
-				// slow desynced wander so the cloud never goes crystalline
-				b.v.x += Math.sin(b.wf * t + b.ph[0]) * PHYS.wander * dt;
-				b.v.y += Math.sin(b.wf * 1.13 * t + b.ph[1]) * PHYS.wander * dt;
-				b.v.z += Math.sin(b.wf * 0.87 * t + b.ph[2]) * PHYS.wander * dt * 0.6;
-				b.v.multiplyScalar(Math.exp(-PHYS.drag * dt));
-				// frustum walls at the body's own depth — the attractor does
-				// the real herding, these only stop strays leaving the frame
-				const halfH = Math.tan((camera.fov / 2) * Math.PI / 180) * (camera.position.z - b.p.z);
-				softWall(b, 0, halfH * camera.aspect, dt);
-				softWall(b, 1, halfH, dt);
-				softWall(b, 2, Z_RANGE, dt);
-				// governor: excess speed (e.g. after a scatter) decays smoothly
-				const sp = b.v.length();
-				if (sp > PHYS.speedMax) b.v.multiplyScalar(Math.exp(-2.5 * dt * (sp / PHYS.speedMax - 1)));
-				b.v.clampLength(0, SPEED_CAP);
-				b.w.clampLength(0, 2.5);
-				b.p.addScaledVector(b.v, dt);
-				dq.set(b.w.x * dt / 2, b.w.y * dt / 2, b.w.z * dt / 2, 1);
-				b.q.premultiply(dq).normalize();
-			}
-		};
-	
-		const mat4 = new Matrix4(), scl = new Vector3();
-		const syncInstances = () => {
-			for (const b of bodies) {
-				if (!b.mesh) continue; // blob sources render via marching cubes
-				scl.setScalar(b.s);
-				mat4.compose(b.p, b.q, scl);
-				b.mesh.setMatrixAt(b.idx, mat4);
-			}
-			for (const m of meshes) m.instanceMatrix.needsUpdate = true;
-		};
-	
-		// click/tap: a radial shockwave along the pointer ray scatters the
-		// swarm; the attractor gathers it back up
+		// click/tap: a shockwave where the pointer ray crosses the blob's
+		// depth plane — the mass scatters, cohesion gathers it back up
 		const raycaster = new Raycaster(), pointer = new Vector2();
 		addEventListener('pointerdown', (ev) => {
-			// artist-mode tweaks must not fire the burst shockwave
-			if (INSPECT || ev.target.closest('a, .patch, #circuitry .knob, #circuitry-pop, #circuitry-snaps')) return;
+			// artist-mode scrubs must not fire the burst shockwave
+			if (INSPECT || ev.target.closest('a, .patch, #circuitry .knobrow')) return;
+			if (!flubberBurst) return;
 			pointer.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
 			raycaster.setFromCamera(pointer, camera);
 			const ro = raycaster.ray.origin, rd = raycaster.ray.direction;
-			const BURST_R = 1.8, BURST = 3.0;
-			for (const b of bodies) {
-				tmp.subVectors(b.p, ro);
-				tmp2.copy(ro).addScaledVector(rd, tmp.dot(rd)); // closest point on ray
-				tmp.subVectors(b.p, tmp2);
-				const d = tmp.length();
-				if (d > BURST_R) continue;
-				const f = BURST * (1 - d / BURST_R);
-				if (d > 1e-4) b.v.addScaledVector(tmp.divideScalar(d), f);
-				b.w.x += (Math.random() - 0.5) * 2 * f;
-				b.w.y += (Math.random() - 0.5) * 2 * f;
-				b.w.z += (Math.random() - 0.5) * 2 * f;
-			}
-			// GPU field shockwave: kick particles out from where the ray
-			// crosses the blob's depth plane, under the cursor
-			if (flubberBurst) {
-				const tz = Math.abs(rd.z) > 1e-3 ? (flubber.center.z - ro.z) / rd.z : 6;
-				const bp = ro.clone().addScaledVector(rd, Math.max(0.5, tz));
-				flubberBurst.trigger(bp, 1.8, 22);
-			}
+			const tz = Math.abs(rd.z) > 1e-3 ? (flubber.center.z - ro.z) / rd.z : 6;
+			const bp = ro.clone().addScaledVector(rd, Math.max(0.5, tz));
+			flubberBurst.trigger(bp, 1.8, 22);
 		});
-	
+
 		let circuit = null; // the circuitry overlay (created below, post-reduced check)
 		let last = 0;
 		const sim = { t: 0 }; // accumulated *stepped* time — test hook
-		const SUBSTEP = 1 / 60; // fixed-ish step: stable forces, bounded n² cost
+		const SUBSTEP = 1 / 60; // fixed-ish step: stable forces
 		const frame = (t) => {
 			const fdt = Math.min(t - last, 1 / 20); // clamp: tab refocus, hitches
 			let dt = fdt;
@@ -774,38 +504,25 @@ async function main() {
 			// advance any in-flight rack glides BEFORE the substeps read the
 			// bound constants — a no-op when nothing is ramping
 			rack.update(fdt);
-			// drift the default camera before stepping: downstream physics
-			// (frustum walls), the flubber field and the render all see one
-			// consistent camera pose this frame. Inspect mode and reduced
-			// motion keep their fixed poses.
+			// drift the default camera before stepping: the flubber field and
+			// the render see one consistent camera pose this frame. Inspect
+			// mode and reduced motion keep their fixed poses.
 			if (!INSPECT && !reduced) applyDriftCamera(t);
 			while (dt > 0) {
 				const h = Math.min(dt, SUBSTEP);
-				scoreStep(h, t - dt + h);
-				physicsStep(h, t - dt + h);
+				slingStep(h, t - dt + h);
 				dt -= h;
 			}
-			syncInstances();
 			// GPU metaball field: push the freshly-stepped wells to the sim,
 			// point refraction at last frame's presented buffer, run the two
 			// compute passes — all BEFORE the scene render marches the density.
 			if (flubber) {
-				// follow the score's stage targets: surface noise, cohesion,
-				// damping and the speed cap all breathe with the phrase
-				followFlub(fdt);
-				// outer-world glitch pierces the governor INSTANTLY — the
-				// followed value keeps evolving underneath, so when the
-				// glitch ends the cap snaps straight back. No easing either way.
-				// (test/frame-continuity.mjs BUDGET = 9.5 — keep in sync)
-				if (score.glitching) flubber.u.uSpeedCap.value = 9.0;
-				// wellDriver.update() pushes the freshly-stepped wells into the sim
 				flubber.setSceneTexture(ping.read.texture);
 				flubber.update(fdt, t);
 			}
 			synth.update(t);
 			blitDisplays();
-			// scene → write (mirror faces sample read), present write, swap
-			mirrorTex.value = ping.read.texture;
+			// scene → write, present write, swap
 			synth.renderer.setRenderTarget(ping.write);
 			synth.renderer.render(scene, camera);
 			presentTex.value = ping.write.texture;
@@ -815,27 +532,19 @@ async function main() {
 			// the circuitry overlay: DOM/SVG, outside the GPU loop entirely
 			circuit?.tick(t, { camera, wells });
 		};
-		window.__body = bodies[0]; window.__bodies = bodies;
 		window.__wells = wells; window.__sim = sim;
-		window.__score = { SCORE, sep, drive, state: score };
-		window.__graph = scoreCtl.graph;
+		window.__sling = sling; window.__graph = graph;
 		window.__camera = camera; window.__inspect = inspectState; // test hooks
 	
 		const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 		// the artwork exposes its own circuitry: a dim live rendering of the
-		// score's signal graph, part of the piece for every viewer. Hard
+		// sling's signal graph, part of the piece for every viewer. Hard
 		// escape: ?circuit=0. Small screens skip it — the text owns them.
 		if (params.get('circuit') !== '0' && matchMedia('(min-width: 720px)').matches) {
 			const { createCircuitOverlay } = await import('./circuit-overlay.js');
 			circuit = createCircuitOverlay({
 				graph, rack, artist: params.get('artist') === '1',
 			});
-		}
-		// dev remote-control: ?artist=1&bridge=1 exposes the rack over the
-		// local WebSocket bridge (agents / external editors)
-		if (params.get('bridge') === '1') {
-			const { connectRackBridge } = await import('@oneilltom/lib3/rack');
-			connectRackBridge(rack);
 		}
 		const setBg = (name) => {
 			backgrounds[name]();

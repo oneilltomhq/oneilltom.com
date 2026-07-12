@@ -1,24 +1,48 @@
 // ---- the circuitry overlay: the artwork exposing its own frame circuit ---
-// A dim SVG rendering of the score's live signal graph (src/graph.js),
+// A dim SVG rendering of the sling's live signal graph (src/graph.js),
 // drawn WITH the art, not on it: it sits between the canvas and the scrim
-// (the scrim's left-heavy gradient dims it over the text column for free),
-// composites with screen blending so hairlines add light into the nebula,
-// and its opacity breathes with the score's own mood. Values tick at 10Hz;
-// stage-gated sub-circuits dim when their stage is dead (dim = dead — the
-// essentials-notebook doctrine). The three well nodes are probes pinned to
-// the projected screen positions of the actual wells: the math visibly
-// tethered to the blob it drives.
+// (the scrim's left-heavy gradient dims it over the text column for free)
+// and its opacity flares with the band tension — the circuit lights up
+// when the sling whips. The two tip nodes are probes pinned to the
+// projected screen positions of the actual wells: the math visibly
+// tethered to the mass it drives.
+//
+// The knobs live INSIDE the box of the node they tune (a `knobs` row is
+// part of the node, not a satellite): in artist mode (?artist=1 or
+// Ctrl+Alt+A) every row scrubs — drag up/down, shift for fine.
 //
 // Build once (createElementNS + one getBBox pass), then only textContent /
-// stroke-opacity / class / ≤4 transforms per frame — no layout thrash.
+// stroke-opacity / ≤2 transforms per frame — no layout thrash.
 import { Vector3 } from 'three/webgpu';
-import { LAYOUT, KINDS, STYLE } from './circuit-layout.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (tag, attrs = {}) => {
 	const e = document.createElementNS(NS, tag);
 	for (const k in attrs) e.setAttribute(k, attrs[k]);
 	return e;
+};
+
+// the hand-authored spatial score: node id → normalized viewport position
+// (or a probe index), plus the voice's color. The text column (x < ~0.42)
+// is sacred; edges may cross the middle — that's where the mass lives.
+const LAYOUT = {
+	anchor: { x: 0.565, y: 0.10, color: '#b8b8b4' },
+	stir: { x: 0.865, y: 0.14, color: '#ffd9fb' },
+	stretch: { x: 0.485, y: 0.80, color: '#b8b8b4' },
+	tension: { x: 0.655, y: 0.88, color: '#f2b75c' },
+	omega: { x: 0.835, y: 0.80, color: '#e4699b' },
+	skin: { x: 0.925, y: 0.52, color: '#8a8a86' },
+	'tip.a': { probe: 0, color: '#5ee8e0' },
+	'tip.b': { probe: 1, color: '#5ee8e0' },
+};
+
+const STYLE = {
+	font: "'Source Code Pro', ui-monospace, Menlo, Consolas, monospace",
+	pad: 7,
+	baseOpacity: 0.55,
+	flareOpacity: 0.30, // added as tension/3 → 1
+	edgeBase: 0.2,
+	edgeActive: 0.55,
 };
 
 const CSS = `
@@ -29,64 +53,30 @@ const CSS = `
 	will-change: opacity;
 }
 #circuitry svg { width: 100%; height: 100%; display: block; }
-#circuitry text {
-	font-family: ${STYLE.font};
-	fill: var(--c, #b8b8b4);
-}
-#circuitry .lbl { font-size: ${STYLE.labelSize}px; font-weight: 400; letter-spacing: 0.04em; }
-#circuitry .val { font-size: ${STYLE.valueSize}px; opacity: 0.92; }
-#circuitry .cap { font-size: ${STYLE.captionSize}px; opacity: 0.55; }
+#circuitry text { font-family: ${STYLE.font}; fill: var(--c, #b8b8b4); }
+#circuitry .lbl { font-size: 10.5px; letter-spacing: 0.04em; }
+#circuitry .val { font-size: 10px; opacity: 0.92; }
+#circuitry .cap { font-size: 8px; opacity: 0.62; }
+#circuitry .knobrow { font-size: 9.5px; fill: #a8a8a2; }
+#circuitry .knobrow tspan.kv { fill: var(--c, #b8b8b4); }
 #circuitry .box {
-	fill: rgba(10,10,12,0.42);
+	fill: rgba(10,10,12,0.55);
 	stroke: var(--c, #b8b8b4);
 	stroke-opacity: 0.4;
 	stroke-width: 1;
 	rx: 4;
 }
 #circuitry .edge { stroke: var(--c, #b8b8b4); fill: none; stroke-width: 1; }
-#circuitry g.node, #circuitry line.edge { transition: opacity 0.6s ease; }
-#circuitry .dead { opacity: 0.16; }
-/* ---- artist mode: the résumé steps back, the knobs step in ---- */
+/* ---- artist mode: the résumé steps back, the rows scrub ---- */
 body.artist { user-select: none; }
 body.artist main { opacity: 0.18; transition: opacity 0.15s ease; }
 body.artist main:hover { opacity: 0.8; }
 body.artist #scrim { opacity: 0.35; }
-#circuitry .knob, #circuitry .knob-edge { display: none; }
-body.artist #circuitry .knob { display: block; cursor: ns-resize; pointer-events: all; }
-body.artist #circuitry .knob-edge { display: inline; stroke-dasharray: 2 3; }
-#circuitry .knob .box { fill: rgba(10,10,12,0.6); stroke-dasharray: 3 2; }
-#circuitry .knob .lbl { font-size: 8.5px; }
-#circuitry .knob .val { font-size: 9px; }
-#circuitry-pop {
-	position: fixed; z-index: 3; display: none;
-	background: rgba(12,12,16,0.92); border: 1px solid #2a2a30;
-	border-radius: 6px; padding: 10px 12px; min-width: 220px;
-	font-family: ${STYLE.font}; font-size: 11px; color: #b8b8b4;
-}
-#circuitry-pop .path { color: #8a8a86; font-size: 9.5px; margin-bottom: 6px; }
-#circuitry-pop .cur { color: #f2f2f0; margin-left: 6px; }
-#circuitry-pop input[type=range] { width: 100%; accent-color: #ffd9fb; margin: 8px 0 6px; }
-#circuitry-pop .ramps { display: flex; gap: 6px; }
-#circuitry-pop .ramps button {
-	background: none; border: 1px solid #2a2a30; border-radius: 4px;
-	color: #8a8a86; font: inherit; font-size: 9.5px; padding: 2px 8px; cursor: pointer;
-}
-#circuitry-pop .ramps button.on { color: #ffd9fb; border-color: #ffd9fb; }
-#circuitry-snaps {
-	position: fixed; right: clamp(1.25rem, 6vw, 6rem); bottom: 4.2rem; z-index: 3;
-	display: none; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 40vw;
-	font-family: ${STYLE.font}; font-size: 9.5px;
-}
-body.artist #circuitry-snaps { display: flex; }
-#circuitry-snaps button {
-	background: rgba(12,12,16,0.75); border: 1px solid #2a2a30; border-radius: 4px;
-	color: #b8b8b4; font: inherit; padding: 3px 9px; cursor: pointer;
-}
-#circuitry-snaps button:hover { color: #ffd9fb; border-color: #ffd9fb; }
-#circuitry-snaps button.snapnew { color: #ffd9fb; }
+body.artist #circuitry .knobrow { opacity: 1; pointer-events: all; cursor: ns-resize; }
+body.artist #circuitry .knobrow:hover, #circuitry .knobrow.live { fill: #ffd9fb; }
 `;
 
-const fmtNum = (v) => (v >= 0 ? ' ' : '') + v.toFixed(2);
+const fmtNum = (v) => (v >= 0 ? ' ' : '') + v.toFixed(2);
 
 export function createCircuitOverlay({ graph, rack, artist = false }) {
 	const wrap = document.createElement('div');
@@ -106,120 +96,94 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 	scrim.parentNode.insertBefore(wrap, scrim);
 
 	let W = innerWidth, H = innerHeight;
-	const boxes = new Map(); // id → {node, g, rect, valEl, cx, cy, w, h, probe, sx, sy}
-	const edges = [];        // {from, to, line}
+	const rackMeta = new Map((rack?.params() ?? []).map((p) => [p.path, p]));
+	const boxes = new Map(); // id → box record
+	const edges = [];        // { from, to, line }
 
-	// -- build ------------------------------------------------------------
-	const mkBox = (n, lay) => {
-		const kind = KINDS[n.kind] ?? KINDS.tap;
-		const g = el('g', { class: `node k-${n.kind}` });
-		g.style.setProperty('--c', kind.color);
+	// -- build --------------------------------------------------------------
+	for (const n of graph.nodes()) {
+		const lay = LAYOUT[n.id];
+		if (!lay) continue;
+		const g = el('g', { class: 'node' });
+		g.style.setProperty('--c', lay.color);
 		const rect = el('rect', { class: 'box' });
 		g.appendChild(rect);
 		const lbl = el('text', { class: 'lbl', x: 0, y: 0 });
 		lbl.textContent = n.label;
 		const val = el('text', { class: 'val', x: 0, y: 13 });
-		val.textContent = '';
 		g.appendChild(lbl);
 		g.appendChild(val);
-		let capH = 0;
+		let rowY = 13;
 		if (n.caption && lay.probe === undefined) {
-			// wrap the plain-words caption to short lines so boxes stay
-			// narrow — the grid pitch is ~0.11 viewport widths
+			// wrap the plain-words caption to short lines — boxes stay narrow
 			const lines = [];
 			let line = '';
 			for (const w of n.caption.split(' ')) {
-				if (line && (line + ' ' + w).length > 24) { lines.push(line); line = w; }
+				if (line && (line + ' ' + w).length > 26) { lines.push(line); line = w; }
 				else line = line ? `${line} ${w}` : w;
 			}
 			if (line) lines.push(line);
-			lines.slice(0, 3).forEach((s, i) => {
-				const cap = el('text', { class: 'cap', x: 0, y: 25 + i * 10 });
+			for (const s of lines.slice(0, 3)) {
+				rowY += 10;
+				const cap = el('text', { class: 'cap', x: 0, y: rowY });
 				cap.textContent = s;
 				g.appendChild(cap);
-				capH += 10;
-			});
-			capH += 2;
+			}
+			rowY += 2;
+		}
+		// the knobs of this node, folded into its box — every one scrubs
+		const knobEls = [];
+		for (const path of n.knobs ?? []) {
+			rowY += 12;
+			const row = el('text', { class: 'knobrow', x: 0, y: rowY });
+			row.dataset.path = path;
+			const name = document.createElementNS(NS, 'tspan');
+			name.textContent = path.split('/').pop() + ' ';
+			const kv = el('tspan', { class: 'kv' });
+			row.appendChild(name);
+			row.appendChild(kv);
+			g.appendChild(row);
+			knobEls.push({ path, kv, last: '' });
 		}
 		nodeLayer.appendChild(g);
+		const bb = g.getBBox(); // one measure pass, then never again
 		const b = {
-			node: graph.get(n.id), g, rect, valEl: val, lastVal: '',
-			probe: lay.probe, lay, cx: 0, cy: 0, w: 0, h: 0,
-			sx: null, sy: null, // probe smoothing state
-			dead: false, lastQ: -1,
+			node: graph.get(n.id), lay, g, rect, valEl: val, lastVal: '',
+			knobEls, probe: lay.probe,
+			w: Math.max(bb.width, 46) + STYLE.pad * 2,
+			h: rowY + 10 + STYLE.pad * 2,
+			cx: 0, cy: 0, sx: null, sy: null,
 		};
-		// one measure pass, then never again
-		const bb = g.getBBox();
-		b.w = Math.max(bb.width, 46) + STYLE.pad * 2;
-		b.h = 20 + capH + STYLE.pad * 2;
 		rect.setAttribute('x', -STYLE.pad);
-		rect.setAttribute('y', -STYLE.labelSize - STYLE.pad + 2);
+		rect.setAttribute('y', -10.5 - STYLE.pad + 2);
 		rect.setAttribute('width', b.w);
 		rect.setAttribute('height', b.h);
 		boxes.set(n.id, b);
-		return b;
-	};
-
-	for (const n of graph.nodes()) {
-		const lay = LAYOUT[n.id];
-		if (!lay) continue; // knobs + untabled nodes: artist mode's business
-		mkBox(n, lay);
 	}
-	// knob satellites: every rack knob joins the circuitry as a small
-	// dashed box — stacked above the node it tunes, or on a rail along the
-	// right edge when its target roams (well probes) or doesn't exist.
-	// Hidden until artist mode.
-	const rackMeta = new Map((rack?.params() ?? []).map((p) => [p.path, p]));
-	const satellites = new Map(); // target box → [knob boxes]
-	const rail = [];
-	if (rack) {
-		for (const n of graph.nodes()) {
-			if (n.kind !== 'param' || !n.rackPath) continue;
-			let target = null;
-			for (const b of boxes.values()) {
-				if (b.node.inputs?.some((i) => i.from === n.id)) { target = b; break; }
-			}
-			const m = rackMeta.get(n.rackPath);
-			const kb = mkBox({ ...n, label: m?.label ?? n.label, caption: null },
-				{ x: 0, y: 0 });
-			kb.g.classList.add('knob');
-			kb.g.dataset.circuitHit = '1';
-			kb.g.dataset.path = n.rackPath;
-			kb.isKnob = true;
-			if (target && target.probe === undefined) {
-				if (!satellites.has(target)) satellites.set(target, []);
-				satellites.get(target).push(kb);
-			} else rail.push(kb);
-		}
-	}
-	// edges between rendered nodes (knob → target edges included; the CSS
-	// hides knob edges outside artist mode)
-	for (const [id, b] of boxes) {
+	for (const [, b] of boxes) {
 		for (const inp of b.node.inputs ?? []) {
 			const from = boxes.get(inp.from);
 			if (!from) continue;
 			const line = el('line', { class: 'edge', 'stroke-opacity': STYLE.edgeBase });
-			line.style.setProperty('--c', (KINDS[from.node.kind] ?? KINDS.tap).color);
-			if (from.isKnob) line.classList.add('knob-edge');
+			line.style.setProperty('--c', from.lay.color);
 			edgeLayer.appendChild(line);
-			edges.push({ from, to: b, line });
+			edges.push({ from, to: b, line, lastQ: -1 });
 		}
 	}
 
-	// -- geometry ---------------------------------------------------------
+	// -- geometry -------------------------------------------------------------
 	// anchor an edge on the box border along the line between centres
-	const anchor = (b, dx, dy) => {
-		const hw = b.w / 2, hh = b.h / 2;
+	const anchorPt = (b, dx, dy) => {
 		const s = Math.min(
-			hw / Math.max(Math.abs(dx), 1e-6),
-			hh / Math.max(Math.abs(dy), 1e-6));
+			(b.w / 2) / Math.max(Math.abs(dx), 1e-6),
+			(b.h / 2) / Math.max(Math.abs(dy), 1e-6));
 		return [b.cx + dx * s, b.cy + dy * s];
 	};
 	const placeEdge = (e) => {
 		const dx = e.to.cx - e.from.cx, dy = e.to.cy - e.from.cy;
 		const len = Math.hypot(dx, dy) || 1;
-		const [x1, y1] = anchor(e.from, dx / len, dy / len);
-		const [x2, y2] = anchor(e.to, -dx / len, -dy / len);
+		const [x1, y1] = anchorPt(e.from, dx / len, dy / len);
+		const [x2, y2] = anchorPt(e.to, -dx / len, -dy / len);
 		e.line.setAttribute('x1', x1); e.line.setAttribute('y1', y1);
 		e.line.setAttribute('x2', x2); e.line.setAttribute('y2', y2);
 	};
@@ -227,144 +191,43 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 		// the group's local origin is the label baseline — offset so
 		// (cx, cy) is the visual centre of the rect
 		const ox = b.cx - b.w / 2 + STYLE.pad;
-		const oy = b.cy - b.h / 2 + STYLE.labelSize + STYLE.pad - 2;
+		const oy = b.cy - b.h / 2 + 10.5 + STYLE.pad - 2;
 		b.g.setAttribute('transform', `translate(${ox},${oy})`);
 	};
 	const layoutAll = () => {
 		W = innerWidth; H = innerHeight;
 		for (const b of boxes.values()) {
-			if (b.probe !== undefined || b.isKnob) continue;
+			if (b.probe !== undefined) continue;
 			b.cx = b.lay.x * W;
 			b.cy = b.lay.y * H;
 			placeBox(b);
 		}
-		for (const [target, kbs] of satellites) {
-			kbs.forEach((kb, i) => {
-				kb.cx = target.cx;
-				kb.cy = target.cy - target.h / 2 - 16 - i * 26;
-				placeBox(kb);
-			});
-		}
-		rail.forEach((kb, i) => {
-			kb.cx = 0.955 * W;
-			kb.cy = 0.10 * H + i * 32;
-			placeBox(kb);
-		});
 		for (const e of edges) placeEdge(e);
 	};
 	layoutAll();
 	addEventListener('resize', layoutAll);
 
-	// -- artist mode: drag to scrub, click for precision, snap to keep ------
+	// -- artist mode: every knob row scrubs -----------------------------------
 	let artistOn = false;
-	let pop = null, popPath = null, popRamp = 400;
-	let snapsEl = null;
-	let liveTimer = 0;
-
-	// any human tweak keeps a rolling __live snapshot (artist mode only) —
-	// reload as artist and the tuning is still there; viewers always get
-	// the authored defaults
-	const markHuman = () => {
-		clearTimeout(liveTimer);
-		liveTimer = setTimeout(() => rack.snap('__live'), 1000);
-	};
-
-	const buildPop = () => {
-		pop = document.createElement('div');
-		pop.id = 'circuitry-pop';
-		pop.innerHTML = `
-			<div class="path"></div>
-			<div><span class="lblx"></span><span class="cur"></span></div>
-			<input type="range">
-			<div class="ramps"></div>`;
-		const ramps = pop.querySelector('.ramps');
-		for (const [label, ms] of [['now', 0], ['400ms', 400], ['2s', 2000]]) {
-			const btn = document.createElement('button');
-			btn.textContent = label;
-			btn.onclick = () => {
-				popRamp = ms;
-				ramps.querySelectorAll('button').forEach((b2) =>
-					b2.classList.toggle('on', b2 === btn));
-			};
-			if (ms === popRamp) btn.classList.add('on');
-			ramps.appendChild(btn);
-		}
-		const slider = pop.querySelector('input');
-		slider.addEventListener('input', () => {
-			rack.set(popPath, +slider.value, popRamp, 'human');
-			pop.querySelector('.cur').textContent = (+slider.value).toFixed(3);
-			markHuman();
-		});
-		document.body.appendChild(pop);
-		addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closePop(); });
-		addEventListener('pointerdown', (ev) => {
-			if (pop.style.display === 'block' && !ev.target.closest('#circuitry-pop')) closePop();
-		}, true);
-	};
-	const closePop = () => { if (pop) pop.style.display = 'none'; popPath = null; };
-	const openPop = (path, x, y) => {
-		if (!pop) buildPop();
-		const m = rackMeta.get(path) ?? {};
-		popPath = path;
-		pop.querySelector('.path').textContent = path;
-		pop.querySelector('.lblx').textContent = m.label ?? path;
-		pop.querySelector('.cur').textContent = (+rack.get(path)).toFixed(3);
-		const slider = pop.querySelector('input');
-		slider.min = m.min ?? 0;
-		slider.max = m.max ?? 1;
-		slider.step = ((m.max ?? 1) - (m.min ?? 0)) / 200;
-		slider.value = rack.get(path);
-		pop.style.display = 'block';
-		pop.style.left = `${Math.min(x, innerWidth - 250)}px`;
-		pop.style.top = `${Math.min(y + 14, innerHeight - 140)}px`;
-	};
-
-	const refreshSnaps = () => {
-		if (!snapsEl) {
-			snapsEl = document.createElement('div');
-			snapsEl.id = 'circuitry-snaps';
-			document.body.appendChild(snapsEl);
-		}
-		snapsEl.textContent = '';
-		const add = (label, cls, fn) => {
-			const b = document.createElement('button');
-			b.textContent = label;
-			if (cls) b.className = cls;
-			b.onclick = fn;
-			snapsEl.appendChild(b);
-		};
-		add('+ snap', 'snapnew', () => { rack.snap(); refreshSnaps(); });
-		for (const s of rack.snaps()) {
-			if (s.name === '__live') continue;
-			add(s.name, '', async (ev) => {
-				if (ev.altKey) { rack.dropSnap(s.name); refreshSnaps(); return; }
-				await rack.apply(s.name, 400);
-			});
-		}
-	};
-
-	// drag-to-scrub on knob boxes; a click (no drag) opens the popover
-	const drag = { path: null, y0: 0, v0: 0, moved: false, raf: 0, next: null };
+	const drag = { path: null, row: null, y0: 0, v0: 0, raf: 0, next: null };
 	svg.addEventListener('pointerdown', (ev) => {
-		const g = ev.target.closest?.('g.knob');
-		if (!artistOn || !g) return;
+		const row = ev.target.closest?.('.knobrow');
+		if (!artistOn || !row) return;
 		ev.stopPropagation();
 		ev.preventDefault();
-		drag.path = g.dataset.path;
+		drag.path = row.dataset.path;
+		drag.row = row;
 		drag.y0 = ev.clientY;
 		drag.v0 = rack.get(drag.path);
-		drag.moved = false;
-		g.setPointerCapture?.(ev.pointerId);
+		row.classList.add('live');
+		row.setPointerCapture?.(ev.pointerId);
 	});
 	svg.addEventListener('pointermove', (ev) => {
 		if (!drag.path) return;
-		const dy = ev.clientY - drag.y0;
-		if (Math.abs(dy) > 3) drag.moved = true;
-		if (!drag.moved) return;
 		const m = rackMeta.get(drag.path) ?? {};
 		const span = (m.max ?? 1) - (m.min ?? 0);
 		const fine = ev.shiftKey ? 0.1 : 1;
-		drag.next = drag.v0 - dy / 150 * span * fine;
+		drag.next = drag.v0 - (ev.clientY - drag.y0) / 150 * span * fine;
 		if (!drag.raf) {
 			drag.raf = requestAnimationFrame(() => {
 				drag.raf = 0;
@@ -372,33 +235,22 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 			});
 		}
 	});
-	svg.addEventListener('pointerup', (ev) => {
-		if (!drag.path) return;
-		if (!drag.moved) openPop(drag.path, ev.clientX, ev.clientY);
-		else markHuman();
-		drag.path = null; drag.next = null;
+	svg.addEventListener('pointerup', () => {
+		drag.row?.classList.remove('live');
+		drag.path = null; drag.row = null; drag.next = null;
 	});
-
 	const setArtist = (on) => {
 		artistOn = on;
 		document.body.classList.toggle('artist', on);
-		if (on) refreshSnaps();
-		else closePop();
 	};
 	addEventListener('keydown', (ev) => {
 		if (ev.ctrlKey && ev.altKey && ev.code === 'KeyA') setArtist(!artistOn);
 	});
-	if (artist && rack) {
-		setArtist(true);
-		// restore the artist's rolling tune-in-progress, if any
-		if (rack.snapshot('__live')) rack.apply('__live', 0).catch(() => {});
-	}
+	if (artist && rack) setArtist(true);
 
-	// -- live updates -----------------------------------------------------
+	// -- live updates ----------------------------------------------------------
 	const probeV = new Vector3();
-	const stageNode = graph.get('phrase.stage');
-	const moodNode = graph.get('mood');
-	const glitchNode = graph.get('glitch');
+	const tensionNode = graph.get('tension');
 	let lastTick = 0, lastOpacity = -1, lastT = 0;
 
 	const fmt = (n) => {
@@ -416,20 +268,19 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 
 	const tick = (t, view) => {
 		const dt = Math.min(t - lastT, 0.1); lastT = t;
-		// breathe with the score (cheap: one style write when it moves)
-		const mood = moodNode.value;
-		let op = STYLE.baseOpacity + STYLE.moodOpacity * Math.min(1, mood / 1.7);
-		if (glitchNode.value) op = STYLE.glitchOpacity;
-		if (artistOn) op = 0.92; // tuning wants a steady lamp, not a breathing one
+		// the circuit flares when the band tension does (one style write)
+		let op = STYLE.baseOpacity
+			+ STYLE.flareOpacity * Math.min(1, tensionNode.value / 3);
+		if (artistOn) op = 0.92; // tuning wants a steady lamp
 		if (Math.abs(op - lastOpacity) > 0.01) {
 			wrap.style.opacity = op.toFixed(2);
 			lastOpacity = op;
 		}
-		// well probes chase the projected wells every frame (≤3 transforms)
+		// the tip probes chase the projected wells every frame (2 transforms)
 		if (view?.camera && view?.wells) {
 			let moved = false;
 			for (const b of boxes.values()) {
-				if (b.probe === undefined || b.probe === null) continue;
+				if (b.probe === undefined) continue;
 				probeV.copy(view.wells[b.probe].p).project(view.camera);
 				let sx = (probeV.x + 1) / 2 * W;
 				let sy = (1 - probeV.y) / 2 * H;
@@ -445,18 +296,19 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 				}
 			}
 			if (moved) for (const e of edges) {
-				if (e.from.probe != null || e.to.probe != null) placeEdge(e);
+				if (e.from.probe !== undefined || e.to.probe !== undefined) placeEdge(e);
 			}
 		}
-		// the 10Hz pass: values, dead-gating, edge activity
+		// the 10Hz pass: values, knob rows, edge activity
 		if (t - lastTick < 0.1) return;
 		lastTick = t;
-		const stage = stageNode.value;
 		for (const b of boxes.values()) {
 			const s = fmt(b.node);
 			if (s !== b.lastVal) { b.valEl.textContent = s; b.lastVal = s; }
-			const dead = !!(b.node.stages && !b.node.stages.includes(stage));
-			if (dead !== b.dead) { b.g.classList.toggle('dead', dead); b.dead = dead; }
+			for (const k of b.knobEls) {
+				const kv = (+rack.get(k.path)).toFixed(2);
+				if (kv !== k.last) { k.kv.textContent = kv; k.last = kv; }
+			}
 		}
 		for (const e of edges) {
 			const q = Math.round(activity(e.from.node) * 16) / 16;
@@ -465,15 +317,11 @@ export function createCircuitOverlay({ graph, rack, artist = false }) {
 					(STYLE.edgeBase + STYLE.edgeActive * q).toFixed(3));
 				e.lastQ = q;
 			}
-			const dead = e.from.dead || e.to.dead;
-			if (dead !== e.dead) { e.line.classList.toggle('dead', dead); e.dead = dead; }
 		}
 	};
 
 	const destroy = () => {
 		removeEventListener('resize', layoutAll);
-		pop?.remove();
-		snapsEl?.remove();
 		wrap.remove();
 	};
 
