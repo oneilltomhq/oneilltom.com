@@ -13,7 +13,7 @@ import {
 } from 'three/webgpu';
 import {
 	texture, screenUV, uv, vec2, vec3, mix, positionWorld, smoothstep,
-	uniform, screenCoordinate,
+	uniform, screenCoordinate, float,
 } from 'three/tsl';
 
 async function main() {
@@ -59,57 +59,64 @@ async function main() {
 		// ---- background patches (o0) — domain-warped fbm nebula ------------
 		// All five are the same look (the `warp` source: q→r→f domain-warp fbm,
 		// dark base, warm/cool mid, pink filaments gated right so the text side
-		// stays calm) and differ only by preset — scale / warm / cool / pink /
-		// seed / speed — exactly as the design system's per-page presets do.
-		// A faint self-feedback (src(o0)) keeps every patch a genuinely live
-		// feedback loop (the "Hydra → WGSL, live" claim) and adds organic drift
-		// without smearing at these tiny modulate amounts.
-		const backgrounds = {
-			// ink — cool, dim, minimal pink (calmest; near-monochrome nebula)
-			ink: () =>
-				warp(3.0, 0.30, 0.74, 0.38, 21, 0.9)
-					.modulate(src(o0).scale(1.008).rotate(0.0014), 0.014)
-					.out(o0),
-			// silk — balanced warm/cool, soft filaments
-			silk: () =>
-				warp(3.4, 0.36, 0.66, 0.52, 12, 1.0)
-					.modulate(src(o0).scale(1.006).rotate(0.0022), 0.018)
-					.out(o0),
-			// melt — warmer, larger slow-drifting blobs
-			melt: () =>
-				warp(2.6, 0.42, 0.60, 0.46, 33, 0.8)
-					.modulate(src(o0).scale(1.012).rotate(-0.0016), 0.02)
-					.out(o0),
-			// signal (default) — the reference landing preset, brighter pink
-			signal: () =>
-				warp(3.2, 0.34, 0.72, 0.60, 21, 1.0)
-					.modulate(src(o0).scale(1.01).rotate(0.0018), 0.016)
-					.out(o0),
-			// cells — tighter scale, filament-heavy, most pink
-			cells: () =>
-				warp(4.2, 0.38, 0.64, 0.72, 47, 1.15)
-					.modulate(src(o0).scale(1.009).rotate(0.0026), 0.02)
-					.out(o0),
+		// stays calm) and differ only by preset. A faint self-feedback
+		// (src(o0)) keeps every patch a genuinely live feedback loop (the
+		// "Hydra → WGSL, live" claim) and adds organic drift without smearing
+		// at these tiny modulate amounts.
+		//
+		// The expressive scalars are shared uniform nodes with rack addresses
+		// (/synth/*): hydra-tsl passes nodes through untouched, so a preset
+		// switch and an artist scrub move the SAME values — presets just
+		// glide them to their authored numbers via the rack.
+		const synthU = {
+			speed: uniform(1.0),  // warp time rate (hero patch)
+			pink: uniform(0.6),   // filament intensity
+			feed: uniform(0.016), // o0 self-feed appetite
+			haste: uniform(1.0),  // accent patches' shared time rate
 		};
-	
+		const PRESETS = {
+			// warp: [scale, warm, cool, seed]; fs/fr: feedback zoom/spin
+			ink:    { warp: [3.0, 0.30, 0.74, 21], speed: 0.9,  pink: 0.38, feed: 0.014, fs: 1.008, fr: 0.0014 },  // calmest, near-mono
+			silk:   { warp: [3.4, 0.36, 0.66, 12], speed: 1.0,  pink: 0.52, feed: 0.018, fs: 1.006, fr: 0.0022 },  // balanced
+			melt:   { warp: [2.6, 0.42, 0.60, 33], speed: 0.8,  pink: 0.46, feed: 0.02,  fs: 1.012, fr: -0.0016 }, // warm slow blobs
+			signal: { warp: [3.2, 0.34, 0.72, 21], speed: 1.0,  pink: 0.60, feed: 0.016, fs: 1.01,  fr: 0.0018 },  // default landing
+			cells:  { warp: [4.2, 0.38, 0.64, 47], speed: 1.15, pink: 0.72, feed: 0.02,  fs: 1.009, fr: 0.0026 },  // tight, most pink
+		};
+		const backgrounds = {};
+		for (const [name, p] of Object.entries(PRESETS)) {
+			backgrounds[name] = () => {
+				warp(p.warp[0], p.warp[1], p.warp[2], synthU.pink, p.warp[3], synthU.speed)
+					.modulate(src(o0).scale(p.fs).rotate(p.fr), synthU.feed)
+					.out(o0);
+				// glide the addressed knobs to this preset's authored voice
+				// (rack exists by the time any preset runs — setBg is late)
+				rack.set('/synth/speed', p.speed, 600);
+				rack.set('/synth/pink', p.pink, 600);
+				rack.set('/synth/feed', p.feed, 600);
+			};
+		}
+
 		// ---- accent patches (o1..o3) — sampled sparsely in the chamber -----
-		osc(6, 0.06, 0.4)
+		// every time-rate arg is multiplied by the shared /synth/haste knob,
+		// so one address paces all three accent loops' breathing
+		const hasty = (v) => float(v).mul(synthU.haste);
+		osc(6, hasty(0.06), 0.4)
 			.modulate(src(o1).scale(1.018).rotate(-0.01), 0.08)
-			.modulate(noise(2.6, 0.08), 0.35)
+			.modulate(noise(2.6, hasty(0.08)), 0.35)
 			.color(1.25, 0.55, 0.32)
 			.saturate(0.82)
 			.contrast(1.4)
 			.out(o1); // ember
-		noise(2.8, 0.05)
+		noise(2.8, hasty(0.05))
 			.kaleid(7)
 			.modulate(src(o2).scale(1.03).rotate(0.012), 0.07)
-			.modulate(osc(5, 0.03, 0.7), 0.08)
+			.modulate(osc(5, hasty(0.03), 0.7), 0.08)
 			.color(0.38, 0.9, 1.15)
 			.contrast(1.45)
 			.out(o2); // mandala
-		noise(1.6, 0.07)
+		noise(1.6, hasty(0.07))
 			.modulate(src(o3).scale(1.006).rotate(0.003), 0.1)
-			.modulate(osc(1.4, 0.025, 0.2).rotate(-0.55), 0.08)
+			.modulate(osc(1.4, hasty(0.025), 0.2).rotate(-0.55), 0.08)
 			.color(0.42, 0.54, 0.82)
 			.saturate(0.55)
 			.contrast(1.06)
@@ -150,6 +157,10 @@ async function main() {
 		// the liquid samples a surrounding environment, not a screen wallpaper.
 		const roomTex = (i, scaleX, scaleY, offX = 0, offY = 0) =>
 			texture(displays[i].rt.texture, uv().mul(vec2(scaleX, scaleY)).add(vec2(offX, offY)));
+		// the chamber's two addressed knobs (/chamber/*): gain scales the four
+		// supporting walls (the hero keeps its authored brightness — it IS the
+		// claim), rim scales the sparse ember/cyan accent bands on all five
+		const chamberU = { gain: uniform(1.0), rim: uniform(1.0) };
 		const mkChamberMat = (sx, sy, ox, oy, gain, rimGain, opacity, additive = false, hero = false) => {
 			const m = new MeshBasicNodeMaterial();
 			m.side = DoubleSide;
@@ -191,18 +202,19 @@ async function main() {
 					.mul(rightBias)
 					.mul(depthFade.mul(0.45).add(0.62))
 					.mul(uvFade.mul(0.32).add(0.68))
-					.add(ember.mul(sparse.mul(0.06 * rimGain)))
-					.add(cyan.mul(diagonalBand.mul(sparse).mul(0.05 * rimGain)))
+					.add(ember.mul(sparse.mul(0.06 * rimGain)).mul(chamberU.rim))
+					.add(cyan.mul(diagonalBand.mul(sparse).mul(0.05 * rimGain)).mul(chamberU.rim))
 					.add(vec3(0.012, 0.02, 0.028).mul(depthFade));
 				return m;
 			}
 			m.colorNode = haze
 				.mul(gain)
+				.mul(chamberU.gain)
 				.mul(uvFade.mul(0.45).add(0.55))
 				.mul(edgeDark.mul(depthFade))
 				.add(strata.mul(verticalBand.mul(0.055)))
-				.add(ember.mul(sparse.mul(0.11 * rimGain)))
-				.add(cyan.mul(diagonalBand.mul(sparse).mul(0.08 * rimGain)))
+				.add(ember.mul(sparse.mul(0.11 * rimGain)).mul(chamberU.rim))
+				.add(cyan.mul(diagonalBand.mul(sparse).mul(0.08 * rimGain)).mul(chamberU.rim))
 				.add(vec3(0.012, 0.02, 0.028).mul(depthFade));
 			return m;
 		};
@@ -331,6 +343,13 @@ async function main() {
 		const qRoll = new Quaternion(), qNode = new Quaternion();
 		const yAxis = new Vector3(0, 1, 0), xAxis = new Vector3(1, 0, 0);
 		const sway = new Vector3(); // offset from rest, rebuilt each frame
+		// the gaze: look-at wander + view-axis bank. One object so the
+		// machine's eye/gaze tap recomputes the SAME numbers the camera uses.
+		const GAZE = {
+			ax: 0.10, fx: 0.043, px: 2.1, // look-at wander, x
+			ay: 0.08, fy: 0.061, py: 0.4, // look-at wander, y
+			roll: 0.05, fr: 0.037, pr: 0.5, // bank about the view axis, rad
+		};
 		const applyDriftCamera = (t) => {
 			const m = (2 * Math.PI / ORBIT.period) * t;
 			const th = m + ORBIT.ecc * Math.sin(m); // equation-of-center pacing
@@ -340,14 +359,14 @@ async function main() {
 			sway.applyQuaternion(qNode);
 			camera.position.copy(camRest).add(sway);
 			camera.lookAt(
-				0.10 * Math.sin(t * 0.043 + 2.1),
-				0.08 * Math.sin(t * 0.061 + 0.4),
+				GAZE.ax * Math.sin(t * GAZE.fx + GAZE.px),
+				GAZE.ay * Math.sin(t * GAZE.fy + GAZE.py),
 				0);
 			// roll: a faint bank about the view axis — the one motion lookAt
 			// can't express (it always keeps the horizon level). Built as a
 			// quaternion about the camera's local Z and post-multiplied onto
 			// the gaze, so it composes in view space without gimbal issues.
-			qRoll.setFromAxisAngle(rollAxis, 0.05 * Math.sin(t * 0.037 + 0.5));
+			qRoll.setFromAxisAngle(rollAxis, GAZE.roll * Math.sin(t * GAZE.fr + GAZE.pr));
 			camera.quaternion.multiply(qRoll);
 		};
 		const applyInspectCamera = () => {
@@ -463,8 +482,9 @@ async function main() {
 		const machine = createMachine({
 			sling, wells, flubber,
 			noise: flubNoise, cohesion: flubCohesion, burst: flubberBurst,
-			grade, orbit: ORBIT,
+			synthU, chamberU, grade, orbit: ORBIT, gaze: GAZE,
 			echoSize: () => ({ w: ping.read.width, h: ping.read.height }),
+			echoLag: () => lastFdt * 1000,
 			rack,
 		});
 		window.__machine = machine;
@@ -487,12 +507,14 @@ async function main() {
 
 		let circuit = null; // the circuitry overlay (created below, post-reduced check)
 		let last = 0;
+		let lastFdt = 0; // the frame's real cost — the echo's lag readout
 		const sim = { t: 0 }; // accumulated *stepped* time — test hook
 		const SUBSTEP = 1 / 60; // fixed-ish step: stable forces
 		const frame = (t) => {
 			const fdt = Math.min(t - last, 1 / 20); // clamp: tab refocus, hitches
 			let dt = fdt;
 			last = t;
+			lastFdt = fdt;
 			sim.t += dt;
 			// advance any in-flight rack glides BEFORE the substeps read the
 			// bound constants — a no-op when nothing is ramping

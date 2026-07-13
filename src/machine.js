@@ -15,7 +15,7 @@ import { createGraph } from './graph.js';
 
 export function createMachine({
 	sling, wells, flubber, noise, cohesion, burst,
-	grade, orbit, echoSize, rack,
+	synthU, chamberU, grade, orbit, gaze, echoSize, echoLag, rack,
 }) {
 	const levels = {};
 	const lvl = (id, title, parent, layout) => {
@@ -32,7 +32,30 @@ export function createMachine({
 		// Anything scrubbable must be unable to break the piece.
 		if (noise) rack.add('/flubber/noise', bindUniform(noise.uniforms.uAmt), { min: 0, max: 2 });
 		if (cohesion) rack.add('/flubber/cohesion', bindUniform(cohesion.uniforms.uStr), { min: 0.3, max: 2 });
-		if (flubber) rack.add('/flubber/damp', bindUniform(flubber.u.uDamp), { min: 0.45, max: 2, unit: '/s' });
+		if (flubber) {
+			rack.add('/flubber/damp', bindUniform(flubber.u.uDamp), { min: 0.45, max: 2, unit: '/s' });
+			// refract swept 0→0.8: at 0 the glass dies into a flat cutout (the
+			// clearest demo of what the echo feeds it); at 0.8 the lensing goes
+			// heavy and the room swims inside the body. Both legible, both safe.
+			rack.add('/flubber/refract', bindUniform(flubber.u.uRefract), { min: 0, max: 0.8 });
+		}
+		// synth/chamber ranges swept 2026-07 (screenshot extremes): all safe.
+		// speed 0 freezes the nebula (self-feed still drifts it faintly), 3 churns;
+		// pink 0 drops the filaments to a cool mono wash; feed 0.08 brightens and
+		// softens but can NOT run away — the warp source re-anchors the loop
+		// every frame, so the feedback has no pure-gain path; haste 0 stills the
+		// accents, 4 makes them breathe fast; gain 0 darkens only the flanks
+		// (the hero wall carries the view); accents 4 stays tasteful.
+		if (synthU) {
+			rack.add('/synth/speed', bindUniform(synthU.speed), { min: 0, max: 3 });
+			rack.add('/synth/pink', bindUniform(synthU.pink), { min: 0, max: 1.2 });
+			rack.add('/synth/feed', bindUniform(synthU.feed), { min: 0, max: 0.08 });
+			rack.add('/synth/haste', bindUniform(synthU.haste), { min: 0, max: 4 });
+		}
+		if (chamberU) {
+			rack.add('/chamber/gain', bindUniform(chamberU.gain), { min: 0, max: 2.5 });
+			rack.add('/chamber/accents', bindUniform(chamberU.rim), { min: 0, max: 4 });
+		}
 		if (orbit) rack.add('/eye/period', bindKey(orbit, 'period'), { min: 12, max: 90, unit: 's' });
 		if (grade) {
 			rack.add('/eye/exposure', bindUniform(grade.exposure), { min: 0.4, max: 2 });
@@ -140,37 +163,58 @@ export function createMachine({
 	});
 	gm.tap('march', {
 		label: 'march', init: 'one skin',
-		caption: 'a single isosurface raymarched — the mass has one body',
+		caption: 'one isosurface raymarched as glass, bending last frame around itself',
+		min: 0, max: 0.8, knobs: ['/flubber/refract'],
 		inputs: [{ from: 'splat' }],
 	});
 
-	// ---- synth interior: four self-feeding patches ------------------------
+	// ---- synth interior: the patches and their shared feedback rail -------
+	// The self-feed loop is drawn as its own node — every patch's output
+	// passes through it (kept one frame) and comes back as an input. That
+	// delay node IS why the synth can run forever without exploding.
 	const gs = lvl('synth', 'synth', 'machine', {
-		o0: { x: 0.56, y: 0.16, color: '#ffd9fb' },
-		o1: { x: 0.86, y: 0.16, color: '#f2b75c' },
-		o2: { x: 0.56, y: 0.64, color: '#5ee8e0' },
-		o3: { x: 0.86, y: 0.64, color: '#b8b8b4' },
+		o0: { x: 0.54, y: 0.16, color: '#ffd9fb' },
+		feed: { x: 0.87, y: 0.40, color: '#e4699b' },
+		accents: { x: 0.56, y: 0.68, color: '#f2b75c' },
 	});
 	const nO0 = gs.tap('o0', {
 		label: 'o0 nebula', init: '—',
-		caption: 'domain-warped fbm, fed a sliver of itself — the hero wall, live-switchable',
+		caption: 'domain-warped fbm — the patch the hero wall shows live',
+		knobs: ['/synth/speed', '/synth/pink'],
+		inputs: [{ from: 'feed' }],
 	});
-	gs.tap('o1', { label: 'o1 ember', init: 'self-fed', caption: 'a warm oscillator chewing its own last frame' });
-	gs.tap('o2', { label: 'o2 mandala', init: 'self-fed', caption: 'kaleided noise, spinning on its own output' });
-	gs.tap('o3', { label: 'o3 strata', init: 'self-fed', caption: 'slow haze — the quietest feedback loop' });
+	gs.tap('feed', {
+		label: 'self-feed', init: '1 frame late',
+		caption: 'each patch drinks its own last frame — drift without smear',
+		knobs: ['/synth/feed'],
+		inputs: [{ from: 'o0' }, { from: 'accents' }],
+	});
+	gs.tap('accents', {
+		label: 'o1 · o2 · o3', init: 'ember · mandala · strata',
+		caption: 'three quiet loops the chamber samples sparsely',
+		knobs: ['/synth/haste'],
+		inputs: [{ from: 'feed' }],
+	});
 
 	// ---- chamber interior --------------------------------------------------
 	const gc = lvl('chamber', 'chamber', 'machine', {
-		hero: { x: 0.58, y: 0.22, color: '#ffd9fb' },
-		walls: { x: 0.82, y: 0.60, color: '#b8b8b4' },
+		hero: { x: 0.56, y: 0.18, color: '#ffd9fb' },
+		walls: { x: 0.84, y: 0.46, color: '#b8b8b4' },
+		accents: { x: 0.62, y: 0.76, color: '#f2b75c' },
 	});
-	gc.tap('hero', {
+	const nHero = gc.tap('hero', {
 		label: 'hero wall', init: 'o0, nearly raw',
 		caption: 'the back wall shows the live patch almost untouched',
 	});
 	gc.tap('walls', {
 		label: 'walls', init: '4 more planes',
 		caption: 'floor, ceiling, flanks — dimmer mixes of all four patches',
+		knobs: ['/chamber/gain'],
+	});
+	gc.tap('accents', {
+		label: 'accents', init: 'ember + cyan',
+		caption: 'sparse warm/cool bands riding every wall',
+		knobs: ['/chamber/accents'],
 	});
 
 	// ---- echo interior: the feedback rail ---------------------------------
@@ -182,10 +226,11 @@ export function createMachine({
 		label: 'write', init: '—',
 		caption: 'this frame renders here',
 	});
-	ge.tap('read', {
-		label: 'read', init: '1 frame late',
-		caption: 'last frame, sampled by the glass — swapped every crank',
+	const nRead = ge.tap('read', {
+		label: 'read', min: 0, max: 60,
+		caption: 'the glass refracts this — the whole room, one frame late',
 		inputs: [{ from: 'write' }],
+		fmt: (v) => `lag ${(+v).toFixed(1)} ms`,
 	});
 
 	// ---- eye interior ------------------------------------------------------
@@ -200,7 +245,7 @@ export function createMachine({
 		knobs: ['/eye/period'],
 		fmt: (v) => `φ ${Math.round(v)}°`,
 	});
-	gy.tap('gaze', {
+	const nGaze = gy.tap('gaze', {
 		label: 'gaze', init: 'drifts + banks',
 		caption: 'the look-at wanders; a faint roll banks the horizon',
 		inputs: [{ from: 'orbit' }],
@@ -235,7 +280,10 @@ export function createMachine({
 	const note = (kind, detail = '') => {
 		if (kind === 'burst') { nHand.set('click — burst'); nPointer.set('burst!'); }
 		if (kind === 'scrub') { nHand.set(`scrub ${detail.split('/').pop()}`); nScrub.set(detail); }
-		if (kind === 'patch') { nHand.set(`patch ${detail}`); nPatch.set(detail); nO0.set(detail); top.get('synth').set(detail); }
+		if (kind === 'patch') {
+			nHand.set(`patch ${detail}`); nPatch.set(detail); nO0.set(detail);
+			nHero.set(detail); top.get('synth').set(detail);
+		}
 	};
 	// the eye's φ, recomputed from the same pacing formula the camera uses
 	const phase = (t) => {
@@ -244,6 +292,7 @@ export function createMachine({
 		const th = m + orbit.ecc * Math.sin(m);
 		return ((th * 180 / Math.PI) % 360 + 360) % 360;
 	};
+	let lagMs = 0;
 	const update = (t) => {
 		nSlingTop.set(tension.value);
 		const b = burst ? burst.uniforms.uStr.value : 0;
@@ -256,9 +305,18 @@ export function createMachine({
 			top.get('echo').set(label);
 			nWrite.set(label);
 		}
+		// the echo's price, measured: one frame of real time (reported by the
+		// frame loop — this update runs at 10Hz, so it can't time it itself),
+		// smoothed a little so the readout breathes instead of flickering
+		if (echoLag) {
+			lagMs += (echoLag() - lagMs) * 0.3;
+			nRead.set(lagMs);
+		}
 		const deg = phase(t);
 		nEyeTop.set(deg);
 		nOrbit.set(deg);
+		if (gaze) nGaze.set(
+			`bank ${(gaze.roll * Math.sin(t * gaze.fr + gaze.pr) * 180 / Math.PI).toFixed(1)}°`);
 	};
 
 	return { levels, top: 'machine', update, note, tension };
