@@ -3,10 +3,10 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Thomas O'Neill — full-stack &amp; creative web engineer</title>
-	<meta name="description" content="Thomas O'Neill — full-stack engineer (TypeScript, React, Node) specialising in 3D and interactive web: Three.js, React Three Fiber, WebGPU. Available for contract work, London / remote.">
-	<meta property="og:title" content="Thomas O'Neill — full-stack &amp; creative web engineer">
-	<meta property="og:description" content="The background is a Hydra-style video synth I rebuilt on Three.js TSL, compiled to WGSL and running on WebGPU.">
+	<title>Thomas O'Neill — Systems &amp; AI engineer</title>
+	<meta name="description" content="Thomas O'Neill — systems and AI engineer working with Three.js, WebGPU, AI agents, React, TypeScript and Node.">
+	<meta property="og:title" content="Thomas O'Neill — Systems &amp; AI engineer">
+	<meta property="og:description" content="Systems and AI engineer. London and remote.">
 	<meta property="og:url" content="https://oneilltom.com">
 	<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>〜</text></svg>">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,6 +18,7 @@
 			--dim: #b8b8b4;
 			--faint: #8a8a86;
 			--accent: #ffd9fb;
+			--rule: rgba(242, 242, 240, 0.16);
 		}
 		* { box-sizing: border-box; }
 		html, body {
@@ -43,8 +44,6 @@
 			display: flex; flex-direction: column; justify-content: center;
 			padding: 6rem clamp(1.25rem, 6vw, 6rem) 9rem;
 			max-width: 60rem;
-			/* the text floats above the circuitry, but its boxes must not
-			   swallow the clicks meant for it — only the links are targets */
 			pointer-events: none;
 		}
 		main a { pointer-events: auto; }
@@ -65,7 +64,24 @@
 			color: var(--faint); margin-top: 0.15rem;
 			font-size: clamp(0.78rem, 1.8vw, 0.95rem);
 		}
-		.avail { margin-top: 1.1rem; color: var(--fg); }
+		.doors {
+			width: min(32rem, 100%); margin-top: 1.6rem;
+			border-top: 1px solid var(--rule);
+		}
+		.door {
+			display: grid; grid-template-columns: minmax(7.5rem, 0.8fr) 1.2fr auto;
+			gap: 0.75rem; align-items: baseline;
+			padding: 0.75rem 0; border-bottom: 1px solid var(--rule);
+		}
+		.door__kind {
+			margin: 0; color: var(--fg); font-size: 0.82rem;
+		}
+		.door__copy { margin: 0; color: var(--dim); font-size: 0.72rem; line-height: 1.55; }
+		.door__action {
+			color: var(--faint); font-size: 0.72rem; white-space: nowrap;
+			text-decoration: none; border-bottom: 1px solid var(--faint); padding-bottom: 2px;
+		}
+		.door__action:hover { color: var(--accent); border-bottom-color: var(--accent); }
 		nav { margin-top: 2.2rem; display: flex; flex-wrap: wrap; gap: 0.6rem 1.6rem; }
 		nav a {
 			color: var(--fg); text-decoration: none;
@@ -89,7 +105,11 @@
 		body.inspect main:hover { opacity: 0.82; }
 		body.inspect #caption { opacity: 0.45; }
 		body.inspect #caption:hover { opacity: 1; }
-		@media (max-width: 600px) { #caption { font-size: 0.65rem; } }
+		@media (max-width: 600px) {
+			.door { grid-template-columns: 1fr; gap: 0.35rem; }
+			.door__action { margin-top: 0.35rem; justify-self: start; }
+			#caption { font-size: 0.65rem; }
+		}
 	</style>
 </head>
 <body>
@@ -98,9 +118,29 @@
 
 	<main>
 		<h1>Thomas O'Neill</h1>
-		<p class="line"><strong>Full-stack engineer — 3D &amp; interactive web</strong></p>
-		<p class="line keywords">Three.js · WebGPU · React Three Fiber · React · TypeScript · Node</p>
-		<p class="line avail">Available for contract work — London / remote</p>
+		<p class="line"><strong>Systems &amp; AI engineer · London / remote</strong></p>
+		<p class="line keywords">Three.js · WebGPU · AI agents · React · TypeScript · Node</p>
+
+		<div class="doors" aria-label="Ways to work with or support Thomas O'Neill">
+			<div class="door">
+				<p class="door__kind">Support my work</p>
+				<p class="door__copy">Open source, experiments, research.</p>
+				<a class="door__action" href="https://ko-fi.com/oneilltom" target="_blank" rel="noreferrer noopener">Ko-fi&nbsp;↗</a>
+			</div>
+
+			<div class="door">
+				<p class="door__kind">Book a session</p>
+				<p class="door__copy">One technical or product problem.</p>
+				<a class="door__action" href="mailto:tom@oneilltom.com?subject=Working%20session">Email&nbsp;↗</a>
+			</div>
+
+			<div class="door">
+				<p class="door__kind">Work with me</p>
+				<p class="door__copy">Projects, contracts, roles.</p>
+				<a class="door__action" href="mailto:tom@oneilltom.com?subject=Working%20together">Email&nbsp;↗</a>
+			</div>
+		</div>
+
 		<nav>
 			<a href="https://github.com/oneilltomhq">GitHub</a>
 			<a href="https://www.linkedin.com/in/oneilltomhq">LinkedIn</a>
